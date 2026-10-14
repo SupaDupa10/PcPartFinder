@@ -9,14 +9,14 @@ deinem eigenen PC.
 --------------------------------------------------------------------------------
 Öffne diesen Link:
 
-    https://github.com/DEIN-NAME/PcPartFinder
+    https://github.com/SupaDupa10/PcPartFinder
 
 Klicke auf den grünen Knopf "Code" und dann auf "Download ZIP". Speichere
 die Datei und entpacke sie:
 Rechtsklick auf die ZIP-Datei -> "Alle extrahieren".
 
 (Du hast schon Git? Dann geht auch:
-    git clone https://github.com/DEIN-NAME/PcPartFinder.git)
+    git clone https://github.com/SupaDupa10/PcPartFinder.git)
 
 --------------------------------------------------------------------------------
 2) Einrichten - nur einmal nötig

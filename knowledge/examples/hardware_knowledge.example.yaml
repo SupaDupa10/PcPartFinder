@@ -1,0 +1,51 @@
+# ============================================================================
+# BEISPIELDATEI - NICHT ALS MARKTPREIS VERWENDEN
+# ============================================================================
+#
+# Diese Datei liegt im Unterordner "examples" und wird deshalb NICHT
+# automatisch geladen (der Loader liest nur die oberste Ebene des
+# Wissensordners).
+#
+# Die Zahlen hier sind FREI ERFUNDENE BEISPIELDATEN, nur um das Format zu
+# zeigen. Genau wie in der Anforderung festgehalten:
+#   "Die Zahlen sind reine Beispieldaten und dürfen nicht als echte
+#    Marktpreise behandelt werden."
+#
+# Kopiere nur die Struktur, niemals die Werte.
+# ============================================================================
+
+version: "beispiel"
+
+entries:
+  - category: gpu
+    model: "Beispielmodell"
+    manufacturer: Beispielhersteller
+    product_family: "Beispielserie"
+    aliases: ["beispiel modell", "beispielmodell"]
+    model_numbers: ["BM-1234"]
+    variants: ["8 GB", "16 GB"]
+    currency: EUR
+    good_price_max: 150
+    fair_price_max: 190
+    overpriced_above: 220
+    performance_index: 100.0
+    performance_index_note: "Beispielwert, kein gemessener Benchmark"
+    known_issues:
+      - "Modellabhängige Besonderheiten hier ergänzen"
+    risk_flags:
+      - "Beispiel-Warnhinweis"
+    notes:
+      - "Beispielnotiz - dieser Eintrag ist nur eine Formatvorlage"
+    problematic: false
+    exclude: false
+    weight: 1.0
+    source: manual_knowledge_base
+    version: "beispiel-1"
+
+  - category: cpu
+    model: "Beispielprozessor"
+    manufacturer: Beispielhersteller
+    # Preisfelder bewusst weggelassen: dann gilt "kein Richtwert vorhanden".
+    aliases: ["beispiel prozessor"]
+    notes:
+      - "Zeigt, dass Preisfelder optional sind"

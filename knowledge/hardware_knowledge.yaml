@@ -1,0 +1,412 @@
+# ============================================================================
+# Hardware-Wissensbasis - aktive Datei
+# ============================================================================
+#
+# Diese Datei enthaelt:
+#   1. MODELL-IDENTITAETEN  -> werden zur Hardware-Erkennung benutzt
+#      (Kategorie, Modellname, Hersteller, Aliase, Modellnummern, Varianten).
+#   2. PREISWISSEN          -> wird zur Bewertung benutzt.
+#
+# WICHTIG - bitte lesen:
+#   * Die Preisfelder sind hier ABSICHTLICH LEER gelassen. Es werden keine
+#     Marktpreise erfunden. Trage nur Preise ein, die du aus eigener
+#     Marktbeobachtung heraus vertreten kannst.
+#   * Diese Werte sind "manuell gepflegtes Preiswissen" und werden in der
+#     Oberflaeche immer getrennt von beobachteten Angebotspreisen ausgewiesen.
+#   * Beobachtete Angebotspreise aus der Datenbank sind KEINE erzielten
+#     Verkaufspreise. Die Anwendung vermischt beides nicht.
+#
+# Felder pro Eintrag:
+#   category            Pflicht. Einer der Schluessel aus backend/categories.py
+#   model               Pflicht. Anzeigename des Modells
+#   manufacturer        Hersteller
+#   product_family      Produktfamilie / Serie (nur Beschriftung)
+#   aliases             Weitere Schreibweisen, unter denen das Modell erkannt wird
+#   model_numbers       Modellnummern (z. B. Hersteller-/Teilenummern)
+#   variants            Ausstattungs-/Groessenvarianten (z. B. "10 GB", "OC")
+#
+#   good_price_max      Obergrenze fuer einen sehr guten Kaufpreis (EUR)
+#   fair_price_max      Obergrenze fuer einen ueblichen Marktpreis (EUR)
+#   overpriced_above    Ab diesem Preis gilt es als zu teuer (EUR)
+#   performance_index   Optionaler, von DIR gepflegter Leistungsindex.
+#                       Keine KI-Schaetzung, keine erfundenen Werte.
+#                       Wird fuer das Kriterium "Preis-Leistung" benutzt.
+#   known_issues        Bekannte Probleme des Modells
+#   risk_flags          Kurze Warnhinweise
+#   notes               Freitext-Hinweise
+#   problematic         true = Standardfilter kann das Modell ausschliessen
+#   exclude             true = Modell wird vom Scoring ausgeschlossen
+#   weight              >1.0 = Modell wird bei der Suche bevorzugt
+#   source              Herkunft der Daten (Standard: manual_knowledge_base)
+#   version             Version des Eintrags (fuer spaetere Nachvollziehbarkeit)
+#
+# Die Datei kann ohne Codeaenderung erweitert werden. Zusaetzlich koennen
+# eigene Dateien in den Einstellungen angegeben werden.
+# ============================================================================
+
+version: "2026-10"
+
+# Metadaten zur Nachvollziehbarkeit (rein informativ)
+metadata:
+  beschreibung: "Starterkatalog mit Modell-Identitaeten. Preisfelder sind bewusst leer."
+  preiswissen_vorhanden: false
+  hinweis: >-
+    Trage Preisrichtwerte erst ein, wenn du sie aus eigener Beobachtung
+    belegen kannst. Leere Felder werden korrekt als "kein Richtwert"
+    behandelt - die Anwendung erfindet keine Zahlen.
+
+entries:
+  # ------------------------------------------------------------------ GPU
+  - category: gpu
+    model: "RTX 4060"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 40 (Ada Lovelace)"
+    aliases: ["geforce rtx 4060", "rtx4060"]
+    variants: ["8 GB"]
+  - category: gpu
+    model: "RTX 4060 Ti"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 40 (Ada Lovelace)"
+    aliases: ["geforce rtx 4060 ti", "rtx4060ti"]
+    variants: ["8 GB", "16 GB"]
+  - category: gpu
+    model: "RTX 4070"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 40 (Ada Lovelace)"
+    aliases: ["geforce rtx 4070", "rtx4070"]
+    variants: ["12 GB", "Super", "Ti"]
+  - category: gpu
+    model: "RTX 4070 Super"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 40 (Ada Lovelace)"
+    aliases: ["geforce rtx 4070 super", "rtx4070super", "4070s"]
+    variants: ["12 GB"]
+  - category: gpu
+    model: "RTX 4070 Ti"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 40 (Ada Lovelace)"
+    aliases: ["geforce rtx 4070 ti", "rtx4070ti"]
+    variants: ["12 GB", "Super"]
+  - category: gpu
+    model: "RTX 4080"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 40 (Ada Lovelace)"
+    aliases: ["geforce rtx 4080", "rtx4080"]
+    variants: ["16 GB", "Super"]
+  - category: gpu
+    model: "RTX 4090"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 40 (Ada Lovelace)"
+    aliases: ["geforce rtx 4090", "rtx4090"]
+    variants: ["24 GB"]
+    risk_flags: ["Haeufig Ziel von Betrugsangeboten - Preise deutlich unter Marktniveau pruefen"]
+  - category: gpu
+    model: "RTX 3060"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 30 (Ampere)"
+    aliases: ["geforce rtx 3060", "rtx3060"]
+    variants: ["12 GB", "8 GB"]
+    risk_flags: ["Es gibt eine 8-GB- und eine 12-GB-Version mit unterschiedlichem Wert"]
+  - category: gpu
+    model: "RTX 3060 Ti"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 30 (Ampere)"
+    aliases: ["geforce rtx 3060 ti", "rtx3060ti"]
+    variants: ["8 GB"]
+  - category: gpu
+    model: "RTX 3070"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 30 (Ampere)"
+    aliases: ["geforce rtx 3070", "rtx3070"]
+    variants: ["8 GB", "Ti"]
+  - category: gpu
+    model: "RTX 3070 Ti"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 30 (Ampere)"
+    aliases: ["geforce rtx 3070 ti", "rtx3070ti"]
+    variants: ["8 GB"]
+  - category: gpu
+    model: "RTX 3080"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 30 (Ampere)"
+    aliases: ["geforce rtx 3080", "rtx3080"]
+    variants: ["10 GB", "12 GB", "Ti"]
+    risk_flags: ["Ex-Mining-Karten sind in diesem Segment verbreitet"]
+  - category: gpu
+    model: "RTX 3080 Ti"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 30 (Ampere)"
+    aliases: ["geforce rtx 3080 ti", "rtx3080ti"]
+    variants: ["12 GB"]
+  - category: gpu
+    model: "RTX 3090"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 30 (Ampere)"
+    aliases: ["geforce rtx 3090", "rtx3090"]
+    variants: ["24 GB"]
+    risk_flags: ["Haeufig aus Mining-Beständen", "Hohe Abwaerme, Luefterverschleiss moeglich"]
+  - category: gpu
+    model: "RTX 2060"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 20 (Turing)"
+    aliases: ["geforce rtx 2060", "rtx2060"]
+    variants: ["6 GB", "12 GB", "Super"]
+  - category: gpu
+    model: "RTX 2070"
+    manufacturer: NVIDIA
+    product_family: "GeForce RTX 20 (Turing)"
+    aliases: ["geforce rtx 2070", "rtx2070"]
+    variants: ["8 GB", "Super"]
+  - category: gpu
+    model: "GTX 1660"
+    manufacturer: NVIDIA
+    product_family: "GeForce GTX 16 (Turing)"
+    aliases: ["geforce gtx 1660", "gtx1660"]
+    variants: ["6 GB", "Super", "Ti"]
+  - category: gpu
+    model: "GTX 1080 Ti"
+    manufacturer: NVIDIA
+    product_family: "GeForce GTX 10 (Pascal)"
+    aliases: ["geforce gtx 1080 ti", "gtx1080ti"]
+    variants: ["11 GB"]
+  - category: gpu
+    model: "RX 6600"
+    manufacturer: AMD
+    product_family: "Radeon RX 6000 (RDNA 2)"
+    aliases: ["radeon rx 6600", "rx6600"]
+    variants: ["8 GB", "XT"]
+  - category: gpu
+    model: "RX 6700 XT"
+    manufacturer: AMD
+    product_family: "Radeon RX 6000 (RDNA 2)"
+    aliases: ["radeon rx 6700 xt", "rx6700xt"]
+    variants: ["12 GB"]
+  - category: gpu
+    model: "RX 6800 XT"
+    manufacturer: AMD
+    product_family: "Radeon RX 6000 (RDNA 2)"
+    aliases: ["radeon rx 6800 xt", "rx6800xt"]
+    variants: ["16 GB"]
+    risk_flags: ["Ex-Mining-Karten sind in diesem Segment verbreitet"]
+  - category: gpu
+    model: "RX 7800 XT"
+    manufacturer: AMD
+    product_family: "Radeon RX 7000 (RDNA 3)"
+    aliases: ["radeon rx 7800 xt", "rx7800xt"]
+    variants: ["16 GB"]
+  - category: gpu
+    model: "RX 7900 XTX"
+    manufacturer: AMD
+    product_family: "Radeon RX 7000 (RDNA 3)"
+    aliases: ["radeon rx 7900 xtx", "rx7900xtx"]
+    variants: ["24 GB"]
+    risk_flags: ["Beliebte Betrugsware - sehr niedrige Preise kritisch pruefen"]
+  - category: gpu
+    model: "RX 580"
+    manufacturer: AMD
+    product_family: "Radeon RX 500 (Polaris)"
+    aliases: ["radeon rx 580", "rx580"]
+    variants: ["8 GB", "4 GB", "2048SP"]
+    known_issues: ["Sehr verbreitet aus Mining-Beständen"]
+
+  # ------------------------------------------------------------------ CPU
+  - category: cpu
+    model: "Ryzen 5 5600"
+    manufacturer: AMD
+    product_family: "Ryzen 5000 (Zen 3)"
+    aliases: ["ryzen 5 5600", "ryzen5600"]
+    variants: ["X", "G"]
+  - category: cpu
+    model: "Ryzen 5 5600X"
+    manufacturer: AMD
+    product_family: "Ryzen 5000 (Zen 3)"
+    aliases: ["ryzen 5 5600x", "ryzen5600x"]
+  - category: cpu
+    model: "Ryzen 7 5700X"
+    manufacturer: AMD
+    product_family: "Ryzen 5000 (Zen 3)"
+    aliases: ["ryzen 7 5700x", "ryzen5700x"]
+  - category: cpu
+    model: "Ryzen 7 5800X3D"
+    manufacturer: AMD
+    product_family: "Ryzen 5000 (Zen 3)"
+    aliases: ["ryzen 7 5800x3d", "ryzen5800x3d", "5800x3d"]
+  - category: cpu
+    model: "Ryzen 5 7600"
+    manufacturer: AMD
+    product_family: "Ryzen 7000 (Zen 4)"
+    aliases: ["ryzen 5 7600", "ryzen7600"]
+    variants: ["X", "X3D"]
+  - category: cpu
+    model: "Ryzen 7 7800X3D"
+    manufacturer: AMD
+    product_family: "Ryzen 7000 (Zen 4)"
+    aliases: ["ryzen 7 7800x3d", "ryzen7800x3d", "7800x3d"]
+  - category: cpu
+    model: "Ryzen 9 5900X"
+    manufacturer: AMD
+    product_family: "Ryzen 5000 (Zen 3)"
+    aliases: ["ryzen 9 5900x", "ryzen5900x"]
+  - category: cpu
+    model: "Core i5-12400"
+    manufacturer: Intel
+    product_family: "Intel Core 12. Generation (Alder Lake)"
+    aliases: ["i5-12400", "i512400", "i5 12400"]
+    variants: ["F"]
+  - category: cpu
+    model: "Core i5-13600K"
+    manufacturer: Intel
+    product_family: "Intel Core 13. Generation (Raptor Lake)"
+    aliases: ["i5-13600k", "i513600k", "i5 13600k"]
+    variants: ["KF"]
+  - category: cpu
+    model: "Core i7-12700K"
+    manufacturer: Intel
+    product_family: "Intel Core 12. Generation (Alder Lake)"
+    aliases: ["i7-12700k", "i712700k", "i7 12700k"]
+    variants: ["KF"]
+  - category: cpu
+    model: "Core i7-13700K"
+    manufacturer: Intel
+    product_family: "Intel Core 13. Generation (Raptor Lake)"
+    aliases: ["i7-13700k", "i713700k", "i7 13700k"]
+    variants: ["KF", "F"]
+  - category: cpu
+    model: "Core i9-12900K"
+    manufacturer: Intel
+    product_family: "Intel Core 12. Generation (Alder Lake)"
+    aliases: ["i9-12900k", "i912900k", "i9 12900k"]
+    variants: ["KF", "KS", "F"]
+
+  # ------------------------------------------------------------------ RAM
+  - category: ram
+    model: "DDR4 16 GB Kit"
+    manufacturer: null
+    product_family: "DDR4"
+    aliases: ["ddr4 16gb", "16gb ddr4 kit"]
+    variants: ["2x8 GB", "3200 MHz", "3600 MHz"]
+  - category: ram
+    model: "DDR5 32 GB Kit"
+    manufacturer: null
+    product_family: "DDR5"
+    aliases: ["ddr5 32gb", "32gb ddr5 kit"]
+    variants: ["2x16 GB", "5600 MHz", "6000 MHz"]
+  - category: ram
+    model: "Corsair Vengeance"
+    manufacturer: Corsair
+    product_family: "DDR4/DDR5"
+    aliases: ["vengeance lpx", "vengeance rgb"]
+  - category: ram
+    model: "G.Skill Trident Z"
+    manufacturer: G.Skill
+    product_family: "DDR4/DDR5"
+    aliases: ["trident z neo", "trident z5"]
+
+  # ------------------------------------------------------------------ SSD
+  - category: ssd
+    model: "Samsung 980 Pro"
+    manufacturer: Samsung
+    product_family: "NVMe SSD"
+    aliases: ["980pro", "980 pro"]
+    variants: ["500 GB", "1 TB", "2 TB"]
+  - category: ssd
+    model: "Samsung 970 Evo Plus"
+    manufacturer: Samsung
+    product_family: "NVMe SSD"
+    aliases: ["970 evo plus", "970evoplus"]
+    variants: ["500 GB", "1 TB", "2 TB"]
+  - category: ssd
+    model: "WD Black SN850X"
+    manufacturer: Western Digital
+    product_family: "NVMe SSD"
+    aliases: ["sn850x", "wd black sn850x"]
+    variants: ["1 TB", "2 TB", "4 TB"]
+  - category: ssd
+    model: "Crucial P3 Plus"
+    manufacturer: Crucial
+    product_family: "NVMe SSD"
+    aliases: ["p3 plus", "p3plus"]
+    variants: ["500 GB", "1 TB", "2 TB"]
+
+  # ---------------------------------------------------------------- HDD
+  - category: hdd
+    model: "WD Red Plus"
+    manufacturer: Western Digital
+    product_family: "NAS-Festplatte"
+    aliases: ["wd red plus"]
+    variants: ["4 TB", "8 TB", "12 TB"]
+  - category: hdd
+    model: "Seagate IronWolf"
+    manufacturer: Seagate
+    product_family: "NAS-Festplatte"
+    aliases: ["ironwolf", "ironwolf pro"]
+
+  # ----------------------------------------------------------- Mainboard
+  - category: mainboard
+    model: "B550 Mainboard"
+    manufacturer: null
+    product_family: "AMD AM4"
+    aliases: ["b550", "am4 mainboard"]
+    variants: ["M-ATX", "ATX"]
+  - category: mainboard
+    model: "B650 Mainboard"
+    manufacturer: null
+    product_family: "AMD AM5"
+    aliases: ["b650", "am5 mainboard"]
+    variants: ["M-ATX", "ATX", "E"]
+  - category: mainboard
+    model: "Z690 Mainboard"
+    manufacturer: null
+    product_family: "Intel LGA1700"
+    aliases: ["z690"]
+  - category: mainboard
+    model: "B660 Mainboard"
+    manufacturer: null
+    product_family: "Intel LGA1700"
+    aliases: ["b660"]
+
+  # ------------------------------------------------------------- Netzteil
+  - category: psu
+    model: "be quiet! Straight Power"
+    manufacturer: be quiet!
+    product_family: "ATX Netzteil"
+    aliases: ["straight power 11", "straight power 12"]
+    variants: ["550 W", "650 W", "750 W", "850 W"]
+  - category: psu
+    model: "Corsair RMx"
+    manufacturer: Corsair
+    product_family: "ATX Netzteil"
+    aliases: ["rm750x", "rm850x", "rm650x"]
+    variants: ["650 W", "750 W", "850 W", "1000 W"]
+  - category: psu
+    model: "Seasonic Focus"
+    manufacturer: Seasonic
+    product_family: "ATX Netzteil"
+    aliases: ["focus gx", "focus plus"]
+    variants: ["550 W", "650 W", "750 W", "850 W"]
+
+  # -------------------------------------------------------- CPU-Kuehler
+  - category: cooler
+    model: "Noctua NH-D15"
+    manufacturer: Noctua
+    product_family: "Luftkuehler"
+    aliases: ["nh-d15", "nhd15", "nh d15"]
+    variants: ["chromax.black", "SE-AM4"]
+  - category: cooler
+    model: "NZXT Kraken"
+    manufacturer: NZXT
+    product_family: "AIO-Wasserkuehlung"
+    aliases: ["kraken x63", "kraken x73", "kraken 240", "kraken 360"]
+    known_issues: ["Bei aelteren Modellen kann die Pumpensteuerung ausfallen"]
+
+  # ------------------------------------------------------------- Gehaeuse
+  - category: case
+    model: "Fractal Design Meshify"
+    manufacturer: Fractal Design
+    product_family: "Midi-Tower"
+    aliases: ["meshify c", "meshify 2", "meshify compact"]
+  - category: case
+    model: "be quiet! Pure Base 500"
+    manufacturer: be quiet!
+    product_family: "Midi-Tower"
+    aliases: ["pure base 500dx", "pure base 500"]

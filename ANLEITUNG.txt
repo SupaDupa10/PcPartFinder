@@ -4,6 +4,9 @@ Programm "PcPartFinder" - gebrauchte PC-Teile finden
 Du brauchst keine Anmeldung und keine Zugangsdaten. Alles läuft nur auf
 deinem eigenen PC.
 
+(Falls die Seite beim Herunterladen nach einem Konto fragt: sag mir kurz
+Bescheid, dann schalte ich den Zugriff für dich frei.)
+
 --------------------------------------------------------------------------------
 1) Programm herunterladen
 --------------------------------------------------------------------------------

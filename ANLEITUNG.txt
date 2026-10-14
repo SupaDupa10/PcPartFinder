@@ -1,0 +1,72 @@
+ANLEITUNG
+Programm "PcPartFinder" - gebrauchte PC-Teile finden
+
+Du brauchst keine Anmeldung und keine Zugangsdaten. Alles läuft nur auf
+deinem eigenen PC.
+
+--------------------------------------------------------------------------------
+1) Programm herunterladen
+--------------------------------------------------------------------------------
+Öffne diesen Link:
+
+    https://github.com/DEIN-NAME/PcPartFinder
+
+Klicke auf den grünen Knopf "Code" und dann auf "Download ZIP". Speichere
+die Datei und entpacke sie:
+Rechtsklick auf die ZIP-Datei -> "Alle extrahieren".
+
+(Du hast schon Git? Dann geht auch:
+    git clone https://github.com/DEIN-NAME/PcPartFinder.git)
+
+--------------------------------------------------------------------------------
+2) Einrichten - nur einmal nötig
+--------------------------------------------------------------------------------
+Gehe in den entpackten Ordner und doppelklicke diese Datei:
+
+    setup.bat
+
+Jetzt wird geprüft, was auf deinem PC fehlt, und automatisch installiert:
+Python, Node.js und - falls nötig - Google Chrome. Danach ist alles fertig
+eingerichtet.
+
+Bitte beachten:
+  * Der erste Durchlauf dauert etwa 5 bis 15 Minuten.
+  * Windows kann nach Rechten fragen und Installationsfenster öffnen.
+    Klicke dort auf "Ja" bzw. "Installieren".
+  * Am Ende bleibt ein schwarzes Fenster mit Text offen. Lass es offen,
+    solange du das Programm benutzt - Schließen beendet das Programm.
+
+--------------------------------------------------------------------------------
+3) Benutzen
+--------------------------------------------------------------------------------
+Öffne deinen Browser und tippe oben in die Adresszeile:
+
+    http://127.0.0.1:8000
+
+Klicke auf "Alle Komponenten suchen". Es kann ein paar Minuten dauern, bis
+die Angebote in der Liste stehen. Ein Klick auf eine Zeile öffnet das
+Angebot.
+
+--------------------------------------------------------------------------------
+4) Beim nächsten Mal
+--------------------------------------------------------------------------------
+Nur "start.bat" doppelklicken, dann im Browser wieder
+http://127.0.0.1:8000 öffnen. Mehr ist nicht zu tun.
+
+--------------------------------------------------------------------------------
+5) Wenn etwas nicht klappt
+--------------------------------------------------------------------------------
+Das schwarze Fenster nennt fast immer den Grund. Kopiere den Text daraus
+oder mach ein Foto davon und schick es mir - dann helfe ich weiter.
+
+Du hast Linux oder einen Mac? Dann im Terminal statt setup.bat:
+    bash setup.sh        (später zum Starten: ./start.sh)
+
+--------------------------------------------------------------------------------
+Zwei kurze Hinweise
+--------------------------------------------------------------------------------
+* In der Liste stehen am Anfang ein paar erfundene Beispiel-Angebote. Echte
+  Angebote kommen dazu, sobald du auf "Alle Komponenten suchen" klickst.
+* Das Programm liest die Seiten von eBay und Kleinanzeigen aus, ähnlich wie
+  du es im Browser machst. Das ist nicht ausdrücklich erlaubt - nutze es
+  deshalb für dich und nicht im Dauerbetrieb.

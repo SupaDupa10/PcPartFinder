@@ -61,6 +61,9 @@ git clone <REPO-URL> PcPartFinder
 cd PcPartFinder
 ```
 
+Zum Weitergeben an jemanden ohne Vorkenntnisse liegt `ANLEITUNG.txt` bereit —
+dieselben Schritte in einfacher Sprache, als einzelne Textdatei.
+
 Bewusst **nicht** im Repository und daher nach dem Klonen selbst anzulegen:
 `.env` (Vorlage: `.env.example`), die virtuelle Umgebung `.venv` und
 `frontend/dist` (entsteht beim Bauen). Auch `data/` wird nicht geteilt — darin

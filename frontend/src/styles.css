@@ -230,6 +230,13 @@ button.linklike:hover {
   color: var(--great);
 }
 
+/* Während eines Suchlaufs stehen die Angebote schon in der Liste, bewertet
+   werden sie erst am Ende. Bis dahin bleibt die Punktzahl blass. */
+.offer-score.unscored {
+  color: var(--dim);
+  font-weight: 400;
+}
+
 .offer-main {
   display: flex;
   flex-direction: column;

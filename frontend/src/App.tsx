@@ -16,6 +16,8 @@ import { count, euro, platformLabel, runStatusLabel, verdictLabel } from './form
 // dazu zeigen. Kein Dashboard, keine Auswertungen, keine Zwischenberichte.
 
 const PAGE_SIZE = 40
+// Obergrenze der Angebotsliste im Backend (siehe backend/api/listings.py).
+const PAGE_SIZE_MAX = 500
 
 // Schwellen für "gutes Angebot" (Deal-Score des Backends, 0-100).
 const QUALITY_LEVELS: { value: number; label: string }[] = [
@@ -94,6 +96,14 @@ export default function App() {
   // Nach einer Suche zeigt die Liste nur die Angebote dieses Laufs.
   const [runScope, setRunScope] = useState<number | null>(null)
   const pollRef = useRef<number | null>(null)
+  // Wie viele Angebote die Liste gerade zeigt. Die Live-Anzeige holt genauso
+  // viele nach, damit eine aufgeklappte Liste nicht wieder zuklappt.
+  const listWindow = useRef(PAGE_SIZE)
+  // Laufende Nummer der Listenabrufe: Eine ältere, langsamer eintreffende
+  // Antwort darf eine neuere nicht überschreiben.
+  const requestSeq = useRef(0)
+  // Zwischenstand des Laufs, zu dem die Liste zuletzt nachgeladen wurde.
+  const liveStand = useRef<string | null>(null)
 
   const usablePlatforms = useMemo(
     () =>
@@ -172,21 +182,42 @@ export default function App() {
     }
   }, [tell])
 
+  // Läuft gerade ein Suchlauf? Das entscheidet, ob die Liste den Zwischenstand
+  // zeigt (unbewertet, ohne Qualitätsgrenze) oder das bewertete Ergebnis.
+  const activeRunId = run !== null && ACTIVE_STATUSES.has(run.status) ? run.id : null
+
   // -- Angebote laden ------------------------------------------------------
 
   const loadListings = useCallback(
     // ``scopeOverride`` erlaubt es, die Liste bewusst ohne Lauf-Filter zu holen:
     // Ein abgebrochener Lauf ohne eigene Treffer wuerde sonst eine leere Liste
     // zeigen, obwohl gespeicherte Angebote vorhanden sind.
-    async (nextOffset: number, extend: boolean, scopeOverride?: number | null) => {
+    //
+    // ``live`` holt den Zwischenstand eines laufenden Suchlaufs: Dann zaehlt die
+    // Qualitaetsgrenze nicht - die Bewertung laeuft erst am Ende des Laufs,
+    // vorher traegt kein Angebot eine Punktzahl. Mit Grenze waere die Liste bis
+    // zum Schluss leer.
+    async (
+      nextOffset: number,
+      extend: boolean,
+      scopeOverride?: number | null,
+      live = false,
+    ) => {
       setLoadingListings(true)
       const scope = scopeOverride === undefined ? runScope : scopeOverride
+      const seq = requestSeq.current + 1
+      requestSeq.current = seq
+      // "Mehr anzeigen" erweitert das Fenster dauerhaft; das Nachladen der
+      // Live-Anzeige laesst es unveraendert.
+      if (!live) listWindow.current = extend ? nextOffset + PAGE_SIZE : PAGE_SIZE
       try {
         const result = await api.listings({
           sort: selection.sort,
-          limit: PAGE_SIZE,
+          limit: live
+            ? Math.min(PAGE_SIZE_MAX, Math.max(PAGE_SIZE, listWindow.current))
+            : PAGE_SIZE,
           offset: nextOffset,
-          min_score: selection.minScore || undefined,
+          min_score: live ? undefined : selection.minScore || undefined,
           fixed_price_only: true,
           // "Versand und Abholung" ist keine Einschränkung - dann bleibt der
           // Parameter weg. "Nur Versand" blendet Angebote aus, die belegt nur
@@ -194,6 +225,7 @@ export default function App() {
           delivery: selection.delivery === 'both' ? undefined : selection.delivery,
           new_since_run: scope ?? undefined,
         })
+        if (seq !== requestSeq.current) return
         setListings((previous) =>
           extend && previous
             ? { ...result, items: [...previous.items, ...result.items] }
@@ -201,9 +233,11 @@ export default function App() {
         )
         setOffset(nextOffset)
       } catch (exc) {
-        tell(exc instanceof Error ? exc.message : String(exc), 'error')
+        if (seq === requestSeq.current) {
+          tell(exc instanceof Error ? exc.message : String(exc), 'error')
+        }
       } finally {
-        setLoadingListings(false)
+        if (seq === requestSeq.current) setLoadingListings(false)
       }
     },
     [selection.minScore, selection.sort, selection.delivery, runScope, tell],
@@ -211,7 +245,10 @@ export default function App() {
 
   useEffect(() => {
     if (!ready) return
-    void loadListings(0, false)
+    // Läuft gerade eine Suche, wird der Zwischenstand geladen: Mit der
+    // Qualitätsgrenze wäre die Liste beim Umschalten der Sortierung leer, weil
+    // während des Laufs noch nichts bewertet ist.
+    void loadListings(0, false, undefined, activeRunId !== null)
   }, [ready, loadListings])
 
   // -- Bestand prüfen ------------------------------------------------------
@@ -256,8 +293,6 @@ export default function App() {
   // Der Fortschritt wird zyklisch beim Backend abgefragt, solange der Lauf
   // laeuft. Der Zeitgeber haengt bewusst nur an der Lauf-Nummer: Sonst wuerde
   // ihn jede neue Fortschrittsmeldung neu aufsetzen und die Anzeige haekeln.
-  const activeRunId = run !== null && ACTIVE_STATUSES.has(run.status) ? run.id : null
-
   useEffect(() => {
     if (activeRunId === null) return
     const tick = async () => {
@@ -291,6 +326,33 @@ export default function App() {
       }
     }
   }, [activeRunId, loadListings, tell])
+
+  // -- Zwischenstand waehrend des Laufs ------------------------------------
+
+  // Das Backend speichert jedes brauchbare Angebot sofort, naemlich je
+  // Suchanfrage (siehe ``backend/search/runner.py``). Die Liste wurde aber
+  // frueher erst nach dem Ende des Laufs neu geladen und blieb damit bis zum
+  // Schluss leer, obwohl der Bestand schon wuchs.
+  //
+  // Deshalb wird die Liste waehrend eines Laufs nachgeladen, sobald der Lauf
+  // mehr gespeicherte oder bewertete Angebote meldet. Die Qualitaetsgrenze gilt
+  // dabei nicht (siehe ``loadListings``) - die Bewertung laeuft erst am Ende.
+  // Am Ende des Laufs laedt der Zeitgeber oben die Liste erneut, dann mit
+  // Grenze.
+  const laufStand =
+    `${run?.progress?.new_listings ?? run?.new_count ?? 0}` +
+    `|${run?.progress?.updated_listings ?? run?.updated_count ?? 0}` +
+    `|${run?.progress?.scored ?? 0}`
+
+  useEffect(() => {
+    if (activeRunId === null) {
+      liveStand.current = null
+      return
+    }
+    if (liveStand.current === laufStand) return
+    liveStand.current = laufStand
+    void loadListings(0, false, activeRunId, true)
+  }, [activeRunId, laufStand, loadListings])
 
   const startSearch = async () => {
     if (selection.groups.length === 0) {
@@ -622,8 +684,21 @@ export default function App() {
           </div>
         </div>
 
+        {active && (
+          <p className="status">
+            Suche läuft: Die Liste zeigt jedes Angebot dieses Laufs, sobald es gefunden
+            und gespeichert ist - nicht erst am Ende. Die Bewertung läuft zum Schluss,
+            deshalb stehen die neuen Zeilen bis dahin ohne Punktzahl hier, und die
+            Mindestqualität ist noch nicht angewendet.
+          </p>
+        )}
+
         {items.length === 0 && !loadingListings && (
-          <p className="status">Noch keine Angebote. Starte oben eine Suche.</p>
+          <p className="status">
+            {active
+              ? 'In diesem Lauf wurde noch nichts gespeichert. Die Liste füllt sich, sobald die ersten Angebote gefunden sind.'
+              : 'Noch keine Angebote. Starte oben eine Suche.'}
+          </p>
         )}
 
         <ul className="offers">
@@ -926,7 +1001,10 @@ function Offer({ listing }: { listing: Listing }) {
   return (
     <li className="offer">
       <a href={listing.url} target="_blank" rel="noreferrer noopener">
-        <span className="offer-score" title={verdictLabel(listing.verdict)}>
+        <span
+          className={listing.deal_score === null ? 'offer-score unscored' : 'offer-score'}
+          title={verdictLabel(listing.verdict)}
+        >
           {listing.deal_score === null ? '–' : Math.round(listing.deal_score)}
         </span>
         <span className="offer-main">

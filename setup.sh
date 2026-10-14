@@ -136,21 +136,30 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Google Chrome (fuer die Website-Suche)
+# 3. Browser fuer die Website-Suche
 # ---------------------------------------------------------------------------
-step "Google Chrome pruefen (fuer die Suche ueber eBay- und Kleinanzeigen-Website)"
+step "Browser pruefen (fuer die Suche ueber eBay- und Kleinanzeigen-Website)"
 CHROME=""
 for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
   if command -v "$candidate" >/dev/null 2>&1; then CHROME="$candidate"; break; fi
+done
+FIREFOX=""
+for candidate in firefox firefox-esr; do
+  if command -v "$candidate" >/dev/null 2>&1; then FIREFOX="$candidate"; break; fi
 done
 if [ -n "$CHROME" ]; then
   ok "Chrome gefunden ($CHROME)"
 elif [ -d "/Applications/Google Chrome.app" ]; then
   ok "Chrome gefunden (/Applications/Google Chrome.app)"
+elif [ -n "$FIREFOX" ]; then
+  # Kein Chrome, aber Firefox: die Website-Suche laeuft auch damit
+  # (EBAY_WEB_BROWSER=firefox) - er braucht nur seinen eigenen Build.
+  ok "Kein Chrome, aber Firefox gefunden ($FIREFOX)"
+  note "Fuer die Suche in Firefox nach der Einrichtung einmalig: .venv/bin/python -m playwright install firefox"
 else
-  missing "Google Chrome"
+  missing "Google Chrome (oder Firefox)"
   note "Installieren: https://www.google.com/chrome/ (bzw. apt/dnf/brew)."
-  note "Ohne Chrome gibt es keine Suche ueber eBay- oder Kleinanzeigen-Website."
+  note "Ohne Browser gibt es keine Suche ueber eBay- oder Kleinanzeigen-Website."
 fi
 
 if [ "$CHECK" = "1" ]; then

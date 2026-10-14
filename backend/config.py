@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     ebay_web_idle_seconds: float = 180.0
     # Zusätzliche Versuche nach einer Bot-Blockade (Pause und frische Cookies).
     ebay_web_block_retries: int = 2
+    # Welcher Browser sucht: "auto" (Google Chrome, sonst Chromium, sonst
+    # Firefox), "chrome", "chromium" oder "firefox". Chromium und Firefox
+    # stellt Playwright selbst bereit ('playwright install chromium' bzw.
+    # 'playwright install firefox'); das installierte Firefox lässt sich von
+    # Playwright nicht steuern.
+    ebay_web_browser: str = "auto"
     # Kein sichtbares Fenster: Chrome läuft mit einem echten, aber außerhalb
     # des Bildschirms liegenden und minimierten Fenster. Auf false stellen,
     # um die Suche im Browser mitzusehen (Fehlersuche).
@@ -94,6 +100,9 @@ class Settings(BaseSettings):
     # sichtbares Fenster ist dafür nicht nötig. Fallse die Seite strenger
     # antwortet, hier auf false stellen (dann öffnet sich ein Fenster).
     kleinanzeigen_web_headless: bool = True
+    # Welcher Browser sucht (siehe ebay_web_browser): "auto", "chrome",
+    # "chromium" oder "firefox".
+    kleinanzeigen_web_browser: str = "auto"
     # Sicherheitsnetz, falls Headless auf true/false gedreht wird: Auch mit
     # echtem Fenster bleibt es unsichtbar (außerhalb des Bildschirms).
     kleinanzeigen_web_hidden: bool = True

@@ -6,8 +6,10 @@ Die offizielle eBay-Browse-API (Connector ``ebay``) verlangt Entwickler-
 Zugangsdaten (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET). Die öffentliche eBay-
 Website lässt sich dagegen ohne Konto durchsuchen - genau das macht ein
 Benutzer im Browser. Damit die App das ebenfalls kann, steuert dieser
-Connector den lokal installierten Google Chrome über Playwright, öffnet die
-normale Suchseite und liest die Ergebnisliste aus.
+Connector einen echten Browser über Playwright, öffnet die normale Suchseite
+und liest die Ergebnisliste aus. Standardmäßig ist das Google Chrome
+(``EBAY_WEB_BROWSER=auto``); ohne Chrome läuft es mit Chromium oder Firefox
+von Playwright.
 
 Warum ein echter (aber unsichtbarer) Browser nötig ist
 --------------------------------------
@@ -233,14 +235,9 @@ class EbayWebConnector(BrowserWebConnector):
         enabled = self.enabled
         playwright_ok = self._playwright_available()
         configured = enabled and playwright_ok
-        reason: str | None = None
-        if not enabled:
-            reason = "eBay-Website-Suche ist deaktiviert (EBAY_WEB_ENABLED=false)."
-        elif not playwright_ok:
-            reason = (
-                "Playwright ist nicht installiert. Bitte 'pip install playwright' "
-                "ausführen; Google Chrome muss installiert sein."
-            )
+        reason = self._unavailable_reason(
+            "eBay-Website-Suche ist deaktiviert (EBAY_WEB_ENABLED=false)."
+        )
         return ConnectorCapabilities(
             platform=self.platform,
             label="eBay (Website)",
@@ -272,7 +269,9 @@ class EbayWebConnector(BrowserWebConnector):
             docs_url=None,
             requires_credentials=False,
             setup_hint=(
-                "Google Chrome installieren und 'pip install playwright' ausführen. "
+                self.browser_setup_hint()
+                + " Browser wählbar über EBAY_WEB_BROWSER "
+                "(auto, chrome, chromium, firefox). "
                 "Abschalten mit EBAY_WEB_ENABLED=false."
             ),
             limitations=[
@@ -534,7 +533,7 @@ class EbayWebConnector(BrowserWebConnector):
         caps = self.capabilities
         if not caps.available:
             return False, caps.reason_unavailable
-        return True, "Google Chrome wird für die eBay-Website-Suche gesteuert."
+        return True, f"{self.browser_hint()} wird für die eBay-Website-Suche gesteuert."
 
     async def test_connection(self) -> tuple[bool, str | None, dict[str, Any]]:
         caps = self.capabilities

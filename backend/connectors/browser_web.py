@@ -1,23 +1,38 @@
 """Gemeinsame Basis für Connectoren, die eine öffentliche Website auslesen.
 
-Warum ein echter Chrome (und warum er trotzdem unsichtbar bleibt)
-----------------------------------------------------------------
+Warum ein echter Browser (und warum er trotzdem unsichtbar bleibt)
+------------------------------------------------------------------
 Marktplätze wie eBay und Kleinanzeigen blocken einfache HTTP-Abrufe und auch
 Headless-Browser häufig mit ``HTTP 403`` (Bot-Schutz). Nur ein realer Browser
 (kein Headless) erhält die Ergebnisseite. Damit die Anwendung dieselben Seiten
-lesen kann, die ein Benutzer im Browser öffnet, steuern diese Connectoren den
-lokal installierten Google Chrome über Playwright.
+lesen kann, die ein Benutzer im Browser öffnet, steuern diese Connectoren einen
+echten Browser über Playwright.
+
+Welcher Browser startet, steht in ``<PRÄFIX>_BROWSER`` (Standard ``auto``):
+
+* ``auto``     - Google Chrome, sonst Chromium, sonst Firefox
+* ``chrome``   - Google Chrome (Rückfall: Chromium)
+* ``chromium`` - das von Playwright mitgelieferte Chromium
+* ``firefox``  - das von Playwright mitgelieferte Firefox
+
+Google Chrome ist der Browser, den fast jeder Rechner schon hat. Chromium und
+Firefox muss Playwright selbst bereitstellen
+(``playwright install chromium`` / ``playwright install firefox``). Das
+**installierte** Firefox lässt sich nicht verwenden: Playwright braucht dafür
+seinen eigenen, angepassten Firefox-Build (geprüft, siehe README).
 
 Ein echtes Browserfenster muss dafür nicht im Weg stehen: Im Standardmodus
-("hidden") startet Chrome mit einem Fenster außerhalb des sichtbaren Bereichs
-und wird direkt danach minimiert - es bleibt technisch ein normaler Browser,
-aber es blitzt kein Fenster über der Arbeit auf. Wer den Browser beim Suchen
-sehen will (Fehlersuche), setzt ``<PRÄFIX>_HIDDEN=false``. Reines Headless
+("hidden") startet der Browser mit einem Fenster außerhalb des sichtbaren
+Bereichs (soweit der Browser das per Startparameter kann) und wird direkt
+danach ausgeblendet - es bleibt technisch ein normaler Browser, aber es blitzt
+kein Fenster über der Arbeit auf. Wer den Browser beim Suchen sehen will
+(Fehlersuche), setzt ``<PRÄFIX>_HIDDEN=false``. Reines Headless
 (``<PRÄFIX>_HEADLESS=true``) bleibt möglich, wo die Seite es erlaubt.
 
 Was hier gemeinsam ist
 ----------------------
-* Lebenszyklus des Browsers (persistentes Profil, Aufwärmen, Aufräumen)
+* Lebenszyklus des Browsers (persistentes Profil je Browser, Aufwärmen,
+  Aufräumen)
 * EIN dauerhafter Tab für alle Anfragen (kein Fenster- und Tab-Wechsel mehr)
 * Abruf einer Seite: Direktabruf per fetch, mit Navigation als Rückfallweg,
   inklusive eines Wiederholungsversuchs nach einer Blockade
@@ -38,6 +53,7 @@ import json
 import logging
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -65,8 +81,17 @@ WINDOW_SIZE = "1366,900"
 # Windows: SW_HIDE blendet ein Fenster vollständig aus - auch aus der
 # Taskleiste. Minimieren allein lässt dort einen Eintrag stehen.
 SW_HIDE = 0
+SW_MINIMIZE = 6
 WINDOW_STATE_MINIMIZED = "minimized"
 WINDOW_STATE_HIDDEN = "hidden"
+
+# Firefox: Das Automatisierungsmerkmal (``navigator.webdriver``) wird
+# abgeschaltet - das Gegenstück zu ``--disable-blink-features=
+# AutomationControlled`` im Chromium-Weg. Die Kennung (User-Agent) wird bei
+# Firefox bewusst NICHT ersetzt: Der von Playwright gelieferte Firefox meldet
+# sich stimmig als Firefox; eine Chrome-Kennung in einem Firefox wäre selbst
+# ein Bot-Merkmal.
+FIREFOX_USER_PREFS = {"dom.webdriver.enabled": False}
 
 # Direktabruf: Die Trefferliste wird per ``fetch`` im _schon geladenen_ Tab
 # geholt und mit ``DOMParser`` ausgewertet, statt für jede Anfrage eine Seite
@@ -114,6 +139,137 @@ async (url) => {
 def inline_fetch_script(extract_js: str) -> str:
     """Baut das JavaScript des Direktabrufs um den Auslese-Code herum."""
     return _INLINE_FETCH_JS.replace("EXTRACT_SOURCE", json.dumps(extract_js))
+
+
+# -- Browser-Auswahl -------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BrowserEngine:
+    """Ein Browser, den Playwright starten kann.
+
+    Chromium (Google Chrome oder der eigene Build) und Firefox unterscheiden
+    sich in drei Punkten, die sich durch den ganzen Connector ziehen:
+
+    * Startparameter (die ``--disable-blink-*``-Schalter sind Chromium-Sache)
+    * Kennung (Chromium bekommt eine feste Chrome-Kennung, Firefox nicht)
+    * Fenstererkennung (die WinAPI muss den richtigen Fenstertyp finden)
+
+    Deswegen steht das je Browser hier einmal zusammen und nicht verteilt als
+    ``if``-Ketten mitten im Ablauf.
+    """
+
+    key: str  # Wert für <PRÄFIX>_BROWSER
+    label: str  # Anzeigename in Meldungen
+    playwright_name: str  # Attribut auf dem Playwright-Objekt
+    channel: str | None  # "chrome" = installiertes Google Chrome
+    profile_suffix: str  # eigener Profilordner je Browserfamilie
+    process_names: frozenset[str]  # Prozessnamen der eigenen Fenster
+    window_class_markers: tuple[str, ...]  # Fensterklassen (nur Windows)
+    install_hint: str  # wie dieser Browser bereitgestellt wird
+    supports_cdp: bool  # CDP (Fenstergröße/-zustand) gibt es nur in Chromium
+
+    @property
+    def bundled(self) -> bool:
+        """Von Playwright mitgeliefert (nicht auf dem Rechner installiert)?"""
+        return self.channel is None
+
+    @property
+    def install_command(self) -> str | None:
+        """Der Playwright-Befehl, der diesen Browser besorgt (``None`` = Systembrowser)."""
+        return None if self.channel else f"playwright install {self.key}"
+
+    @property
+    def full_label(self) -> str:
+        """Name samt Herkunft - für Meldungen, die genau sein müssen."""
+        return self.label if not self.bundled else f"{self.label} (von Playwright)"
+
+
+CHROME = BrowserEngine(
+    key="chrome",
+    label="Google Chrome",
+    playwright_name="chromium",
+    channel="chrome",
+    profile_suffix="",
+    process_names=frozenset({"chrome.exe"}),
+    window_class_markers=("Chrome_WidgetWin",),
+    install_hint=(
+        "Google Chrome installieren (https://www.google.com/chrome/ oder "
+        "'winget install Google.Chrome')"
+    ),
+    supports_cdp=True,
+)
+
+CHROMIUM = BrowserEngine(
+    key="chromium",
+    label="Chromium",
+    playwright_name="chromium",
+    channel=None,
+    profile_suffix="",
+    process_names=frozenset({"chrome.exe"}),
+    window_class_markers=("Chrome_WidgetWin",),
+    install_hint=(
+        "Chromium für Playwright bereitstellen ('playwright install chromium' "
+        "im venv, ca. 150 MB)"
+    ),
+    supports_cdp=True,
+)
+
+FIREFOX = BrowserEngine(
+    key="firefox",
+    label="Firefox",
+    playwright_name="firefox",
+    channel=None,
+    # Eigener Profilordner: Ein Chrome-Profil darf nicht als Firefox-Profil
+    # geöffnet werden (und umgekehrt).
+    profile_suffix="-firefox",
+    process_names=frozenset({"firefox.exe"}),
+    # Das Firefox-Hauptfenster heißt "MozillaWindowClass", Hinweisfenster
+    # "MozillaDialogClass" und so weiter - daher der gemeinsame Anfang.
+    window_class_markers=("Mozilla",),
+    install_hint=(
+        "Firefox für Playwright bereitstellen ('playwright install firefox' im "
+        "venv, ca. 120 MB) - das installierte Firefox lässt sich nicht steuern"
+    ),
+    supports_cdp=False,
+)
+
+# Was <PRÄFIX>_BROWSER auswählt. "auto" probiert der Reihe nach durch, bis ein
+# Browser startet - so funktioniert die Website-Suche auch auf Rechnern ohne
+# Google Chrome (dann mit Chromium oder Firefox von Playwright).
+BROWSER_CHOICES: dict[str, tuple[BrowserEngine, ...]] = {
+    "auto": (CHROME, CHROMIUM, FIREFOX),
+    "chrome": (CHROME, CHROMIUM),
+    "chromium": (CHROMIUM,),
+    "firefox": (FIREFOX,),
+}
+
+
+def engine_choices_hint() -> str:
+    """Die erlaubten Werte für ``<PRÄFIX>_BROWSER`` (für Fehlermeldungen)."""
+    return ", ".join(sorted(BROWSER_CHOICES))
+
+
+def _short_error(exc: BaseException) -> str:
+    """Kernaussage einer Playwright-Meldung (ohne ASCII-Kasten und Anhang).
+
+    Playwright hängt an fehlende Browser einen Kasten mit dem Hinweis
+    "playwright install" an; in einer Meldung an den Benutzer stört das nur.
+    """
+    for line in str(exc).splitlines():
+        text = line.strip().strip("║╔╗╚╝═ ").strip()
+        if text:
+            return text
+    return type(exc).__name__
+
+
+def _browser_missing(message: str) -> bool:
+    """Meldet Playwright, dass der Browser selbst fehlt (nicht installiert)?
+
+    In diesem Fall hilft ein zweiter Profilordner nicht weiter - dann wird
+    gleich der nächste Browser probiert.
+    """
+    return "Executable doesn't exist" in message or "is not found" in message
 
 
 def _page_url(page: Any) -> str:
@@ -169,11 +325,14 @@ def _is_on_screen(rect: tuple[int, int, int, int], screens: list[tuple[int, int,
     )
 
 
-def _foreign_chrome_window_handles() -> set[int]:
-    """HWNDs aller Chrome-Fenster (nur Windows, sonst leer).
+def _window_handles(
+    markers: tuple[str, ...] = CHROME.window_class_markers,
+) -> set[int]:
+    """HWNDs aller Browserfenster, deren Klasse auf ``markers`` passt.
 
-    Wird genutzt, um vor dem Start den Bestand aufzunehmen und danach nur das
-    eigene, neue Fenster auszublenden - fremde Fenster bleiben unberührt.
+    Nur Windows, sonst leer. Wird genutzt, um vor dem Start den Bestand
+    aufzunehmen und danach nur das eigene, neue Fenster auszublenden - fremde
+    Fenster bleiben unberührt.
     """
     if os.name != "nt":  # pragma: no cover - nur Windows
         return set()
@@ -188,7 +347,7 @@ def _foreign_chrome_window_handles() -> set[int]:
     def callback(hwnd, _lparam):
         cls = ctypes.create_unicode_buffer(256)
         user32.GetClassNameW(hwnd, cls, 256)
-        if "Chrome_WidgetWin" in cls.value:
+        if _window_class_matches(cls.value, markers):
             handles.add(int(hwnd))
         return True
 
@@ -197,8 +356,15 @@ def _foreign_chrome_window_handles() -> set[int]:
     return handles
 
 
-def _chrome_process_ids() -> set[int]:
-    """PIDs aller laufenden ``chrome.exe``-Prozesse (nur Windows, sonst leer)."""
+def _window_class_matches(class_name: str, markers: tuple[str, ...]) -> bool:
+    """Gehört dieser Fensterklassenname zu einem der Browser?"""
+    return any(marker in class_name for marker in markers)
+
+
+def _process_ids(
+    names: frozenset[str] = CHROME.process_names,
+) -> set[int]:
+    """PIDs aller laufenden Prozesse mit einem dieser Namen (nur Windows)."""
     if os.name != "nt":  # pragma: no cover - nur Windows
         return set()
     try:  # pragma: no cover - Plattformabhängig
@@ -231,7 +397,8 @@ def _chrome_process_ids() -> set[int]:
         entry.dwSize = ctypes.sizeof(_ProcessEntry32)
         ok = kernel32.Process32First(snapshot, ctypes.byref(entry))
         while ok:
-            if entry.szExeFile.decode("utf-8", "replace").lower() == "chrome.exe":
+            exe = entry.szExeFile.decode("utf-8", "replace").lower()
+            if exe in names:
                 pids.add(int(entry.th32ProcessID))
             ok = kernel32.Process32Next(snapshot, ctypes.byref(entry))
     finally:
@@ -239,16 +406,20 @@ def _chrome_process_ids() -> set[int]:
     return pids
 
 
-def _hide_native_window(known: set[int], owned_pids: set[int] | None = None) -> bool:
-    """Blendet die Fenster des *eigenen* Chrome aus (Windows).
+def _hide_native_window(
+    known: set[int],
+    owned_pids: set[int] | None = None,
+    markers: tuple[str, ...] = CHROME.window_class_markers,
+) -> bool:
+    """Blendet die Fenster des *eigenen* Browsers aus (Windows).
 
     Sicherheitsregel: Es wird nie ein fremdes Fenster angefasst.
 
-    * Ist ``owned_pids`` bekannt (die Chrome-Prozesse, die wir selbst gestartet
+    * Ist ``owned_pids`` bekannt (die Browser-Prozesse, die wir selbst gestartet
       haben), gilt deren Zugehörigkeit - damit werden auch Hilfsfenster
-      erwischt, die Chrome an beliebiger Stelle aufklappt (Übersetzen-Hinweis,
-      Wiederherstellen-Hinweis). Ohne diese Zuordnung blieben solche Fenster
-      sichtbar, sobald sie einmal auf dem Bildschirm liegen.
+      erwischt, die der Browser an beliebiger Stelle aufklappt (Übersetzen-
+      Hinweis, Wiederherstellen-Hinweis). Ohne diese Zuordnung blieben solche
+      Fenster sichtbar, sobald sie einmal auf dem Bildschirm liegen.
     * Sonst greift der vorsichtige Rückfall: Nur neue Fenster, die weit
       außerhalb des Bildschirms liegen oder noch leer sind, werden ausgeblendet.
 
@@ -271,7 +442,7 @@ def _hide_native_window(known: set[int], owned_pids: set[int] | None = None) -> 
             return True
         cls = ctypes.create_unicode_buffer(256)
         user32.GetClassNameW(handle, cls, 256)
-        if "Chrome_WidgetWin" not in cls.value:
+        if not _window_class_matches(cls.value, markers):
             return True
         if owned_pids:
             pid = wintypes.DWORD()
@@ -304,6 +475,54 @@ def _hide_native_window(known: set[int], owned_pids: set[int] | None = None) -> 
     return hidden
 
 
+def _minimize_native_window(
+    owned_pids: set[int] | None,
+    markers: tuple[str, ...] = CHROME.window_class_markers,
+) -> bool:
+    """Minimiert die eigenen Browserfenster (Windows, WinAPI).
+
+    Für Firefox der einzige Weg, das Fenster kleiner zu machen: Das Minimieren
+    über CDP gibt es nur in Chromium. Es werden ausschließlich Fenster der
+    eigenen Prozesse angefasst - ohne bekannte Prozessliste passiert nichts.
+
+    Rückgabe: ``True``, wenn mindestens ein eigenes Fenster minimiert wurde.
+    """
+    if os.name != "nt":  # pragma: no cover - nur Windows
+        return False
+    if not owned_pids:
+        return False
+    try:  # pragma: no cover - Plattformabhängig
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return False
+    user32 = ctypes.windll.user32
+    candidates: list[int] = []
+
+    def callback(hwnd, _lparam):
+        handle = int(hwnd)
+        if not user32.IsWindowVisible(handle):
+            return True
+        cls = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(handle, cls, 256)
+        if not _window_class_matches(cls.value, markers):
+            return True
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(handle, ctypes.byref(pid))
+        if int(pid.value) not in owned_pids:
+            return True  # Fenster des Benutzers - nicht anfassen
+        candidates.append(handle)
+        return True
+
+    procedure = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows(procedure(callback), 0)
+    minimized = False
+    for handle in candidates:
+        if user32.ShowWindow(handle, SW_MINIMIZE):
+            minimized = True
+    return minimized
+
+
 def german_float(raw: str) -> float | None:
     """Wandelt deutsche und englische Zahlenschreibweisen in einen Float.
 
@@ -328,13 +547,17 @@ def german_float(raw: str) -> float | None:
 
 
 class BrowserWebConnector(ListingConnector):
-    """Basisklasse für Connectoren mit echtem, standardmäßig unsichtbarem Chrome.
+    """Basisklasse für Connectoren mit echtem, standardmäßig unsichtbarem Browser.
+
+    Gestartet wird Google Chrome (Standard), ein von Playwright mitgeliefertes
+    Chromium oder Firefox - einstellbar über ``<PRÄFIX>_BROWSER``.
 
     Unterklassen setzen:
 
     * ``platform``            - Kennung (z. B. ``ebay_web``)
     * ``settings_prefix``     - Präfix der Einstellungen (z. B. ``ebay_web``
-      für ``EBAY_WEB_ENABLED``, ``EBAY_WEB_TIMEOUT_SECONDS`` ...)
+      für ``EBAY_WEB_ENABLED``, ``EBAY_WEB_BROWSER``,
+      ``EBAY_WEB_TIMEOUT_SECONDS`` ...)
     * ``warmup_url``          - Startseite, die beim ersten Abruf Cookies setzt
     * ``ready_selector``      - Selektor, auf den die Ergebnisseite wartet
     * ``extract_js``          - JavaScript, das die Trefferliste als Daten liefert
@@ -345,6 +568,10 @@ class BrowserWebConnector(ListingConnector):
     platform = "browser_web"
     settings_prefix = ""
     platform_label = "Website"
+    # Welcher Browser gestartet wird (siehe ``BROWSER_CHOICES``): "auto" heißt
+    # Google Chrome, sonst Chromium, sonst Firefox. Einstellbar über
+    # ``<PRÄFIX>_BROWSER``.
+    default_browser = "auto"
     warmup_url = ""
     ready_selector = ""
     extract_js = ""
@@ -397,6 +624,9 @@ class BrowserWebConnector(ListingConnector):
         self._playwright = None
         self._context = None
         self._page = None
+        # Der Browser, der wirklich gestartet wurde (erst nach dem Start
+        # bekannt - bei "auto" entscheidet das Gelingen).
+        self._engine: BrowserEngine | None = None
         self._inline_js: str | None = None
         self._inline_pause_until = 0.0
         self._inline_failures = 0
@@ -445,10 +675,75 @@ class BrowserWebConnector(ListingConnector):
         """Wird die Trefferliste per fetch statt per Navigation geholt?"""
         return bool(self._setting("inline_fetch", self.default_inline_fetch))
 
-    def _profile_dir(self) -> str:
-        """Persistentes Browser-Profil (echte Cookies senken den Bot-Verdacht)."""
+    def browser_setting_key(self) -> str:
+        """Name der Einstellung, die den Browser auswählt (für Meldungen)."""
+        prefix = f"{self.settings_prefix}_" if self.settings_prefix else ""
+        return f"{prefix}browser".upper()
+
+    def _engine_candidates(self) -> tuple[BrowserEngine, ...]:
+        """Browser in der eingestellten Reihenfolge (siehe ``BROWSER_CHOICES``).
+
+        Ein unbekannter Wert wird nicht stillschweigend als etwas anderes
+        gedeutet: Er wird angemeldet und es gilt ``auto`` - so bleibt das
+        Verhalten nachvollziehbar, statt an einem Tippfehler zu scheitern.
+        """
+        raw = str(self._setting("browser", self.default_browser) or "").strip().lower()
+        engines = BROWSER_CHOICES.get(raw)
+        if engines is None:
+            logger.warning(
+                "%s: unbekannter Wert '%s' in %s (erlaubt: %s) - es gilt 'auto'",
+                self.platform,
+                raw,
+                self.browser_setting_key(),
+                engine_choices_hint(),
+            )
+            return BROWSER_CHOICES["auto"]
+        return engines
+
+    @property
+    def engine(self) -> BrowserEngine | None:
+        """Der gestartete Browser (``None``, solange keiner läuft)."""
+        return self._engine
+
+    def browser_hint(self) -> str:
+        """Welcher Browser startet - in Worten (für Meldungen in der UI)."""
+        if self._engine is not None:
+            return self._engine.full_label
+        engines = self._engine_candidates()
+        if len(engines) == 1:
+            return engines[0].full_label
+        rest = ", ".join(engine.full_label for engine in engines[1:])
+        return f"{engines[0].full_label} (Rückfall: {rest})"
+
+    def browser_setup_hint(self) -> str:
+        """In Worten: wie der eingestellte Browser bereitgestellt wird."""
+        steps: list[str] = []
+        if not self._playwright_available():
+            steps.append("'pip install playwright' ausführen")
+        candidates = self._engine_candidates()
+        first = candidates[0]
+        if first.channel:
+            hint = first.install_hint
+            alternatives = [
+                f"'{engine.install_command}'"
+                for engine in candidates
+                if engine.install_command
+            ]
+            if alternatives:
+                hint += " - ohne Chrome geht es auch mit: " + ", ".join(alternatives)
+            steps.append(hint)
+        else:
+            steps.append(first.install_hint)
+        return ". ".join(steps) + "."
+
+    def _profile_dir(self, engine: BrowserEngine = CHROME) -> str:
+        """Persistentes Browser-Profil (echte Cookies senken den Bot-Verdacht).
+
+        Jede Browserfamilie bekommt einen eigenen Ordner: Ein Chrome-Profil
+        darf nicht als Firefox-Profil geöffnet werden.
+        """
         raw = str(self._setting("profile_dir", "") or self.default_profile_dir)
-        path = Path(raw)
+        path = Path(f"{raw}{engine.profile_suffix}")
         try:
             path.mkdir(parents=True, exist_ok=True)
         except OSError:  # pragma: no cover - Rechteproblem
@@ -469,8 +764,7 @@ class BrowserWebConnector(ListingConnector):
             return disabled_text
         if not self._playwright_available():
             return (
-                "Playwright ist nicht installiert. Bitte 'pip install playwright' "
-                "ausführen; Google Chrome muss installiert sein."
+                "Playwright ist nicht installiert. " + self.browser_setup_hint()
             )
         return None
 
@@ -484,38 +778,59 @@ class BrowserWebConnector(ListingConnector):
                 from playwright.async_api import async_playwright
             except Exception as exc:  # pragma: no cover - Installationsfehler
                 raise ConnectorUnavailableError(
-                    "Playwright ist nicht installiert. Bitte 'pip install playwright' "
-                    "ausführen; Google Chrome muss installiert sein.",
+                    "Playwright ist nicht installiert. " + self.browser_setup_hint(),
                     platform=self.platform,
                 ) from exc
 
             self._playwright = await async_playwright().start()
             try:
                 need_hide = self._hide_window_needed()
-                known_windows = _foreign_chrome_window_handles() if need_hide else set()
-                before_pids = _chrome_process_ids() if need_hide else set()
+                # Vor dem Start den Bestand aufnehmen: Danach ist klar, welche
+                # Fenster und Prozesse zum eigenen Browser gehören. Gefragt wird
+                # für alle in Frage kommenden Browser - welcher startet, weiß
+                # man erst hinterher.
+                candidates = self._engine_candidates()
+                markers = tuple(
+                    dict.fromkeys(
+                        marker
+                        for engine in candidates
+                        for marker in engine.window_class_markers
+                    )
+                )
+                names = frozenset(
+                    name for engine in candidates for name in engine.process_names
+                )
+                known_windows = _window_handles(markers) if need_hide else set()
+                before_pids = _process_ids(names) if need_hide else set()
                 self._context = await self._launch(self._playwright)
                 if need_hide:
-                    # Chrome erzeugt sein Fenster manchmal erst kurz nach dem
-                    # Start - deshalb ein paar Versuche statt nur einem.
+                    engine = self._engine or CHROME
+                    # Der Browser erzeugt sein Fenster manchmal erst kurz nach
+                    # dem Start - deshalb ein paar Versuche statt nur einem.
                     state = None
                     for _attempt in range(5):
-                        # Alle Chrome-Prozesse, die es vor dem Start nicht gab,
-                        # gehören zu diesem Browser.
-                        self._owned_pids = _chrome_process_ids() - before_pids
-                        state = await self._make_window_invisible(known_windows)
+                        # Alle Prozesse dieses Browsers, die es vor dem Start
+                        # nicht gab, gehören zu diesem Browser.
+                        self._owned_pids = _process_ids(engine.process_names) - before_pids
+                        state = await self._make_window_invisible(known_windows, engine)
                         if state is not None:
                             break
                         await asyncio.sleep(0.2)
                     if state is None:
                         logger.warning(
-                            "%s: Browserfenster konnte nicht unsichtbar gemacht "
+                            "%s: Fenster von %s konnte nicht unsichtbar gemacht "
                             "werden - es bleibt sichtbar. Abschalten mit %s_HIDDEN=false.",
                             self.platform,
+                            engine.full_label,
                             self.settings_prefix.upper() or "BROWSER",
                         )
                     else:
-                        logger.info("%s: Browserfenster ist unsichtbar (%s)", self.platform, state)
+                        logger.info(
+                            "%s: Fenster von %s ist unsichtbar (%s)",
+                            self.platform,
+                            engine.full_label,
+                            state,
+                        )
             except Exception as exc:
                 await self._stop_playwright()
                 self._launch_error = str(exc)
@@ -529,78 +844,123 @@ class BrowserWebConnector(ListingConnector):
             # Das Aufwärmen öffnet eine Seite und holt das Fenster zurück.
             self._hide_window_if_needed()
             self._schedule_idle_close()
-            logger.info("%s-Website-Connector: Chrome bereit", self.platform)
+            logger.info(
+                "%s-Website-Connector: %s bereit", self.platform, self.browser_hint()
+            )
 
-    def _profile_candidates(self) -> list[str]:
+    def _profile_candidates(self, engine: BrowserEngine = CHROME) -> list[str]:
         """Profilordner der Reihe nach.
 
-        Ist das feste Profil noch von einem alten (abgestürzten) Chrome belegt,
-        scheitert der Start mit "Wird in einer aktuellen Browsersitzung
+        Ist das feste Profil noch von einem alten (abgestürzten) Browser
+        belegt, scheitert der Start mit "Wird in einer aktuellen Browsersitzung
         geöffnet". Ein zweiter Ordner verhindert, dass die Anwendung deshalb
         dauerhaft blockiert.
         """
-        primary = self._profile_dir()
+        primary = self._profile_dir(engine)
         candidates = [primary]
         if self._setting("profile_fallback", True):
             candidates.append(f"{primary}-2")
         return candidates
 
     async def _launch(self, playwright):
-        """Startet Chrome. Headless nur, wo es die Seite erlaubt.
+        """Startet den ersten Browser, der sich starten lässt.
 
-        Reihenfolge je Profilordner: echtes Google Chrome, dann mitgeliefertes
-        Chromium (nur wenn installiert). Schlägt alles fehl, nennt der Fehler
-        die tatsächlichen Ursachen statt nur der letzten - vor allem den
-        häufigen Fall "das Profil ist noch von einem Chrome-Fenster belegt".
+        Reihenfolge: siehe ``BROWSER_CHOICES`` (Standard ``auto``: Google
+        Chrome, dann Chromium, dann Firefox). Je Browser wird zuerst das feste
+        Profil probiert, dann der Ausweichordner. Fehlt der Browser selbst,
+        wird nicht auch noch der zweite Profilordner probiert - das würde nur
+        Zeit kosten.
+
+        Schlägt alles fehl, nennt der Fehler die tatsächlichen Ursachen statt
+        nur der letzten - vor allem den häufigen Fall "das Profil ist noch von
+        einem Browserfenster belegt".
         """
         headless = bool(self._setting("headless", self.default_headless))
         hidden = bool(self._setting("hidden", self.default_hidden)) and not headless
-        args = self._launch_args(headless=headless, hidden=hidden)
         timeout = float(self._setting("timeout_seconds", self.default_timeout_seconds))
         errors: list[str] = []
-        for profile in self._profile_candidates():
-            common = dict(
-                user_data_dir=profile,
-                headless=headless,
-                locale="de-DE",
-                user_agent=_USER_AGENT,
-                viewport={"width": 1366, "height": 900},
-                args=args,
-                timeout=timeout * 1000,
-            )
-            try:
-                return await playwright.chromium.launch_persistent_context(
-                    channel="chrome", **common
+        for engine in self._engine_candidates():
+            browser_type = getattr(playwright, engine.playwright_name, None)
+            if browser_type is None:  # pragma: no cover - Playwright ohne den Browser
+                errors.append(
+                    f"{engine.full_label}: Playwright kann diesen Browser nicht starten"
                 )
-            except Exception as exc:
-                errors.append(f"Chrome ({profile}): {exc}")
-                logger.warning("Chrome im Profil %s nicht gestartet: %s", profile, exc)
-            try:
-                # Fallback: mitgeliefertes Chromium (nur nach
-                # 'playwright install chromium' vorhanden).
-                return await playwright.chromium.launch_persistent_context(**common)
-            except Exception as exc:
-                errors.append(f"Chromium ({profile}): {exc}")
+                continue
+            args = self._launch_args(engine=engine, headless=headless, hidden=hidden)
+            for profile in self._profile_candidates(engine):
+                common = dict(
+                    user_data_dir=profile,
+                    headless=headless,
+                    locale="de-DE",
+                    viewport={"width": 1366, "height": 900},
+                    args=args,
+                    timeout=timeout * 1000,
+                )
+                if engine.channel:
+                    common["channel"] = engine.channel
+                if engine.key == FIREFOX.key:
+                    # Firefox meldet sich selbst als Firefox (siehe
+                    # ``FIREFOX_USER_PREFS``) - keine erfundene Chrome-Kennung.
+                    common["firefox_user_prefs"] = dict(FIREFOX_USER_PREFS)
+                else:
+                    common["user_agent"] = _USER_AGENT
+                try:
+                    context = await browser_type.launch_persistent_context(**common)
+                except Exception as exc:
+                    message = _short_error(exc)
+                    errors.append(f"{engine.full_label} ({profile}): {message}")
+                    logger.warning(
+                        "%s im Profil %s nicht gestartet: %s",
+                        engine.full_label,
+                        profile,
+                        message,
+                    )
+                    if _browser_missing(message):
+                        # Fehlt der Browser selbst, hilft kein zweiter
+                        # Profilordner - gleich den nächsten Browser probieren.
+                        break
+                    continue
+                self._engine = engine
+                return context
         hint = (
-            " Ist noch ein Chrome-Fenster dieser Suche offen, bitte schließen "
+            " Ist noch ein Browserfenster dieser Suche offen, bitte schließen "
             "oder einen anderen Profilordner setzen (…_PROFILE_DIR)."
         )
         raise ConnectorUnavailableError(
-            "Browser konnte nicht gestartet werden: " + " | ".join(errors[-3:]) + hint,
+            "Browser konnte nicht gestartet werden: "
+            + " | ".join(errors[-3:])
+            + ". "
+            + self.browser_setup_hint()
+            + hint,
             platform=self.platform,
         )
 
     # -- Unsichtbares Fenster ---------------------------------------------
 
-    def _launch_args(self, *, headless: bool, hidden: bool) -> list[str]:
-        """Chrome-Parameter. Im Hidden-Modus startet das Fenster außerhalb des
-        Bildschirms (und wird gleich danach noch minimiert).
+    def _launch_args(
+        self,
+        *,
+        headless: bool,
+        hidden: bool,
+        engine: BrowserEngine = CHROME,
+    ) -> list[str]:
+        """Startparameter des Browsers.
 
-        Wichtig: Es bleibt ein echtes, sichtbares ("headed") Chrome - nur eben
+        Im Hidden-Modus startet das Chromium-Fenster außerhalb des Bildschirms
+        (und wird gleich danach noch ausgeblendet).
+
+        Wichtig: Es bleibt ein echtes, sichtbares ("headed") Fenster - nur eben
         nicht im sichtbaren Bereich. Genau deshalb greift der Bot-Schutz nicht
         so wie bei Headless-Browsern.
+
+        Firefox kennt diese Chromium-Schalter nicht: Dort wird das Fenster
+        ausschließlich über die WinAPI ausgeblendet (siehe
+        ``_hide_native_window``).
         """
-        args = ["--disable-blink-features=AutomationControlled"]
+        args: list[str] = []
+        if not engine.supports_cdp:  # Firefox
+            return args
+        args.append("--disable-blink-features=AutomationControlled")
         if hidden and not headless:
             args.extend(
                 [
@@ -619,30 +979,47 @@ class BrowserWebConnector(ListingConnector):
     def _hide_window_if_needed(self) -> None:
         """Fenster unsichtbar halten.
 
-        Chrome zeigt sein Fenster bei jeder neuen Seite wieder an und öffnet
-        dabei auch Hilfsfenster (Übersetzen-Hinweis). Deshalb wird nach jedem
-        Seitenaufbau erneut ausgeblendet. Das ist billig (ein paar WinAPI-Aufrufe)
-        und betrifft nur Fenster der eigenen Chrome-Prozesse.
+        Der Browser zeigt sein Fenster bei jeder neuen Seite wieder an und
+        öffnet dabei auch Hilfsfenster (Übersetzen-Hinweis). Deshalb wird nach
+        jedem Seitenaufbau erneut ausgeblendet. Das ist billig (ein paar
+        WinAPI-Aufrufe) und betrifft nur Fenster der eigenen Browser-Prozesse.
         """
         if self._context is None or not self._hide_window_needed():
             return
-        _hide_native_window(set(), self._owned_pids)
+        engine = self._engine or CHROME
+        _hide_native_window(set(), self._owned_pids, engine.window_class_markers)
 
-    async def _make_window_invisible(self, known_windows: set[int]) -> str | None:
+    async def _make_window_invisible(
+        self,
+        known_windows: set[int],
+        engine: BrowserEngine | None = None,
+    ) -> str | None:
         """Fenster unsichtbar machen: unter Windows ausblenden, sonst minimieren.
 
         Ausblenden ist die gründlichere Variante (kein Eintrag in der
-        Taskleiste). Klappt das nicht, wird wenigstens minimiert - dann steht
-        das Fenster außerhalb des Bildschirms und ist zugeklappt.
+        Taskleiste). Klappt das nicht, wird wenigstens minimiert: in Chromium
+        über CDP, in Firefox über die WinAPI (dort gibt es kein CDP).
         """
-        if _hide_native_window(known_windows, self._owned_pids):
+        engine = engine or self._engine or CHROME
+        if _hide_native_window(
+            known_windows, self._owned_pids, engine.window_class_markers
+        ):
             return WINDOW_STATE_HIDDEN
-        return await self._minimize_window()
+        if engine.supports_cdp:
+            state = await self._minimize_window()
+            if state is not None:
+                return state
+        if _minimize_native_window(self._owned_pids, engine.window_class_markers):
+            return WINDOW_STATE_MINIMIZED
+        return None
 
     async def _minimize_window(self) -> str | None:
-        """Minimiert das Chrome-Fenster und liefert den erreichten Zustand.
+        """Minimiert das Fenster über CDP und liefert den erreichten Zustand.
 
-        Rückgabe ``None`` bedeutet: Das Verstecken ist fehlgeschlagen (dann
+        Geht nur in Chromium (CDP). Für Firefox gibt es
+        ``_minimize_native_window`` über die WinAPI.
+
+        Rückgabe ``None`` bedeutet: Das Minimieren ist fehlgeschlagen (dann
         bleibt das Fenster sichtbar und das wird als Warnung protokolliert).
         """
         if self._context is None:
@@ -685,7 +1062,8 @@ class BrowserWebConnector(ListingConnector):
         """Aktueller Fensterzustand (``minimized``/``normal``) oder ``None``.
 
         Nur für Prüfungen: Damit lässt sich belegen, dass wirklich kein Fenster
-        im Weg steht.
+        im Weg steht. Geht über CDP und damit nur in Chromium - in Firefox
+        liefert die Abfrage deshalb ``None``.
         """
         if self._context is None:
             return None
@@ -748,6 +1126,8 @@ class BrowserWebConnector(ListingConnector):
                 pass
         self._context = None
         self._page = None
+        # Beim nächsten Start wird wieder nach <PRÄFIX>_BROWSER entschieden.
+        self._engine = None
         self._warm = False
         self._page_loads = 0
         # Frischer Browser: Der nächste Abruf startet ohne alte Wartemarke.

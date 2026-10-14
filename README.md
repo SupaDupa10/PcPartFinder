@@ -82,8 +82,10 @@ Beides prüft zuerst, was schon vorhanden ist, und installiert Fehlendes über
 
 * Python 3.11 oder neuer,
 * Node.js 20 oder neuer (nur für die Oberfläche nötig),
-* Google Chrome, falls es fehlt — ohne Chrome gibt es keine Suche über
-die eBay- oder Kleinanzeigen-Website. Abschaltbar mit `setup.bat -NoChrome`.
+* einen Browser, falls keiner da ist — ohne Browser gibt es keine Suche über
+die eBay- oder Kleinanzeigen-Website (Abschnitt 5.0). Ist Google Chrome da,
+nimmt die Suche ihn; ist schon Firefox da, wird kein Chrome installiert.
+Abschaltbar mit `setup.bat -NoChrome`.
 
 Danach werden `.venv`, die Abhängigkeiten, `.env` und `frontend/dist`
 hergestellt, und die Anwendung startet. Beide Skripte sind mehrfach
@@ -235,9 +237,9 @@ Browser (Abschnitt 5.0).
 
 | Weg | Was du tun musst | Ergebnis |
 |---|---|---|
-| **eBay Website (ohne Konto)** | Nichts außer Google Chrome — `pip install playwright` | Live-Suche auf `ebay.de` über einen echten Browser (Fenster bleibt unsichtbar) |
+| **eBay Website (ohne Konto)** | Nichts außer einem Browser (Google Chrome oder Firefox) — `pip install playwright` | Live-Suche auf `ebay.de` über einen echten Browser (Fenster bleibt unsichtbar) |
 | **eBay API** | Kostenloses Developer-Konto, Production-Key eintragen (Abschnitt 5.1) | Live-Suche über die offizielle Browse API |
-| **Kleinanzeigen Website (ohne Konto)** | Nichts außer Google Chrome — `pip install playwright` | Live-Suche auf `kleinanzeigen.de` im eigenen Browser (Abschnitt 6.2) |
+| **Kleinanzeigen Website (ohne Konto)** | Nichts außer einem Browser (Google Chrome oder Firefox) — `pip install playwright` | Live-Suche auf `kleinanzeigen.de` im eigenen Browser (Abschnitt 6.2) |
 | **Kleinanzeigen (Import)** | Eigene Suche im Browser, Seite speichern, `scripts/import_html.py` (Abschnitt 6.1) | Echte Kleinanzeigen-Angebote als Import |
 | **Eigene Datenquelle** | Eigener Export/Partnerdatei als JSON (Abschnitt 7) | Alles, was du rechtmäßig beschafft hast |
 
@@ -261,22 +263,44 @@ Es gibt zwei unabhängige eBay-Connectoren, die du getrennt auswählen kannst:
 Sind beide nutzbar und beide ausgewählt, hat die API Vorrang, damit keine
 Angebote doppelt einlaufen.
 
-### 5.0 eBay ohne Zugangsdaten (Website-Suche im eigenen Chrome)
+### 5.0 eBay ohne Zugangsdaten (Website-Suche im eigenen Browser)
 
 Genau das, was du im Browser machst: auf `ebay.de` gehen und suchen. Der
 Connector übernimmt das für dich.
 
-1. **Einmalig vorbereiten** (Chrome ist bei dir installiert):
+1. **Einmalig vorbereiten** (ein Browser ist bei dir installiert):
 
 ```bash
 .venv/Scripts/python -m pip install playwright
 ```
 
-   Es ist **kein** `playwright install` nötig — es wird dein vorhandenes Google
-   Chrome verwendet.
+   Für Google Chrome ist **kein** `playwright install` nötig — es wird dein
+   vorhandenes Chrome verwendet (Standard: `EBAY_WEB_BROWSER=auto`).
 
-2. In der Suche die Plattform **„eBay (Website)“** auswählen und starten. Chrome
-   arbeitet dabei unsichtbar im Hintergrund (kein Fenster über deiner Arbeit).
+   **Ohne Chrome, mit Firefox:** Playwright kann das installierte Firefox nicht
+   steuern — nachgemessen endete der Startversuch nach dem Zeitlimit von 30 s in
+   einer Zeitüberschreitung, weil dabei auf die Steuerungsschnittstelle des
+   eigenen Firefox-Builds gewartet wird. Gebraucht wird deshalb der angepasste
+   Firefox-Build von Playwright:
+
+```bash
+.venv/Scripts/python -m playwright install firefox   # lädt ca. 120 MB
+```
+
+   Danach in `.env` setzen: `EBAY_WEB_BROWSER=firefox` (bei Kleinanzeigen
+   entsprechend `KLEINANZEIGEN_WEB_BROWSER=firefox`). Firefox bekommt einen
+   eigenen Profilordner (`data/ebay_profile-firefox`), damit sich die Profile
+   der beiden Browser nicht vermischen.
+
+   **Welcher Browser wann:** `EBAY_WEB_BROWSER` nimmt `auto` (Standard),
+   `chrome`, `chromium` oder `firefox`. `auto` probiert der Reihe nach durch,
+   bis einer startet: Google Chrome, dann das mitgelieferte Chromium, dann
+   Firefox. Fehlt ein Browser ganz, wird er nicht erneut in jedem Profilordner
+   probiert, sondern gleich der nächste genommen.
+
+2. In der Suche die Plattform **„eBay (Website)“** auswählen und starten. Der
+   Browser arbeitet dabei unsichtbar im Hintergrund (kein Fenster über deiner
+   Arbeit).
 
 3. Prüfen lässt sich das per API:
    `curl -X POST http://127.0.0.1:8000/api/connectors/ebay_web/test`. Erwartet
@@ -451,7 +475,9 @@ Kleinanzeigen-Seite — so, wie du selbst im Browser suchst. Connector:
 (Website)“**.
 
 1. **Einmalig vorbereiten:** `.venv/Scripts/python -m pip install playwright`
-   (Google Chrome ist bereits installiert).
+   (ein Browser ist bereits installiert, siehe Abschnitt 5.0 — für Firefox
+   zusätzlich `.venv/Scripts/python -m playwright install firefox` und
+   `KLEINANZEIGEN_WEB_BROWSER=firefox`).
 2. In der Suche die Plattform **„Kleinanzeigen (Website)“** wählen und starten.
 3. Prüfen: `curl -X POST http://127.0.0.1:8000/api/connectors/kleinanzeigen_web/test`.
    Erwartet wird eine Meldung wie „25 Angebote für 'grafikkarte' gelesen“.
@@ -1021,12 +1047,25 @@ bewusst nicht an, damit sie schlicht bleibt.
 | Kein sichtbares Fenster über der Arbeit (Standard) | `*_WEB_HIDDEN` (`false` = Fenster zeigen) |
 | Gar kein Fenster, reines Headless | `*_WEB_HEADLESS` (eBay blockt das oft mit `403`) |
 | Trefferliste im offenen Tab per `fetch` holen (schnell) | `*_WEB_INLINE_FETCH` (`false` = jede Seite vollständig laden) |
+| Welcher Browser sucht (`auto`, `chrome`, `chromium`, `firefox`) | `*_WEB_BROWSER` (Standard `auto`) |
 
 Das Fenster bleibt unsichtbar, weil Chrome mit `--window-position=-32000,-32000`
 startet und direkt ausgeblendet wird (Windows: `ShowWindow(SW_HIDE)`, damit auch
 kein Eintrag in der Taskleiste bleibt). Nachgeblendet wird nur noch, wenn
 wirklich ein neuer Tab entsteht - das Schnellverfahren braucht keinen.
 Nicht-Windows-Systeme: minimiert außerhalb des Bildschirms.
+
+Für Firefox gibt es die Chromium-Schalter (`--window-position`,
+`--start-minimized`) nicht; dort wird das Fenster allein über die WinAPI
+ausgeblendet. Minimieren über CDP fällt weg (CDP kennt nur Chromium), deshalb
+gibt es als zweiten Weg `ShowWindow(SW_MINIMIZE)` über die WinAPI. Erkannt wird
+der richtige Fenstertyp über die Fensterklasse: `Chrome_WidgetWin…` bzw.
+`Mozilla…`; angefasst werden weiterhin nur Fenster der eigenen Browser-Prozesse.
+Auf Nicht-Windows-Systemen lässt sich ein Firefox-Fenster nicht verbergen -
+das wird als Warnung gemeldet statt still ignoriert. In der Prüfung (Windows,
+Firefox 155 von Playwright) war bei beiden Quellen **kein einziges** der 8 bzw.
+10 eigenen Firefox-Fenster sichtbar (`IsWindowVisible` für jedes Fenster der
+eigenen Prozesse geprüft).
 
 Nachgemessen mit der Windows-API (`IsWindowVisible`/`GetWindowRect`): Während
 eines vollständigen Laufs über beide Website-Connectoren war in 32 Abfragen
@@ -1054,6 +1093,11 @@ Status währenddessen ab und bleibt bedienbar.
   Nutzungsbedingungen ausgesetzt: einzelne Anfragen können mit `403` blockiert
   werden (wird ehrlich gemeldet), und der Zeitraum wird nur über die Sortierung
   angenähert. Abschaltbar mit `EBAY_WEB_ENABLED=false`.
+* **Firefox:** Playwright braucht dafür seinen eigenen Firefox-Build
+  (`playwright install firefox`, ca. 120 MB); das installierte Firefox lässt
+  sich nicht steuern. Unter Windows bleibt das Firefox-Fenster unsichtbar
+  (WinAPI), unter Linux/macOS ist das nicht möglich - dort dann `*_WEB_HEADLESS`
+  nutzen oder bei Google Chrome bleiben.
 * **Erster Start ohne Zugangsdaten:** nutzbar sind jetzt die eBay-Website, die
   Kleinanzeigen-Website und der lokale Import. Die Startskripte laden zusätzlich automatisch die
   Beispieldaten aus `samples/beispiel_angebote.json` (Abschnitt 7.1).

@@ -29,8 +29,10 @@ Gehe in den entpackten Ordner und doppelklicke diese Datei:
     setup.bat
 
 Jetzt wird geprüft, was auf deinem PC fehlt, und automatisch installiert:
-Python, Node.js und - falls nötig - Google Chrome. Danach ist alles fertig
-eingerichtet.
+Python, Node.js und - falls nötig - Google Chrome. Hast du schon Firefox,
+reicht der zur Suche ebenfalls aus: Dann wird kein Chrome installiert und du
+trägst später in der Datei .env bei EBAY_WEB_BROWSER=firefox ein (siehe
+README, Abschnitt 5.0). Danach ist alles fertig eingerichtet.
 
 Bitte beachten:
   * Der erste Durchlauf dauert etwa 5 bis 15 Minuten.

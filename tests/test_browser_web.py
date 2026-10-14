@@ -17,6 +17,7 @@ import pytest
 
 from backend.connectors.base import ConnectorError, ConnectorUnavailableError
 from backend.connectors.browser_web import (
+    FIREFOX,
     BrowserWebConnector,
     german_float,
     inline_fetch_script,
@@ -97,10 +98,10 @@ class TestVerfuegbarkeit:
         assert reason is not None and "Playwright" in reason
 
 
-class _FakeChromium:
-    """Minimaler Ersatz fuer playwright.chromium ohne echten Browser."""
+class _FakeBrowser:
+    """Minimaler Ersatz fuer playwright.chromium bzw. playwright.firefox."""
 
-    def __init__(self, fail_times: int, error: Exception | None = None) -> None:
+    def __init__(self, fail_times: int = 0, error: Exception | None = None) -> None:
         self.calls: list[dict] = []
         self.fail_times = fail_times
         self.error = error or RuntimeError("Wird in einer aktuellen Browsersitzung geöffnet")
@@ -113,16 +114,31 @@ class _FakeChromium:
 
 
 class _FakePlaywright:
-    def __init__(self, chromium: _FakeChromium) -> None:
-        self.chromium = chromium
+    """Playwright-Attrappe. Firefox scheitert standardmäßig (wie ohne
+    ``playwright install firefox``), damit die Tests den Ausweichweg nicht
+    versehentlich benutzen."""
+
+    def __init__(
+        self,
+        chromium: _FakeBrowser | None = None,
+        firefox: _FakeBrowser | None = None,
+    ) -> None:
+        self.chromium = chromium if chromium is not None else _FakeBrowser()
+        self.firefox = firefox if firefox is not None else _FakeBrowser(fail_times=99)
 
 
 class _FakeUser32:
     """Minimale WinAPI-Attrappe fuer die Fenstererkennung (Windows-API)."""
 
-    def __init__(self, windows: dict[int, int], title: str = "") -> None:
+    def __init__(
+        self,
+        windows: dict[int, int],
+        title: str = "",
+        window_class: str = "Chrome_WidgetWin_1",
+    ) -> None:
         self.windows = dict(windows)
         self.title = title
+        self.window_class = window_class
         self.visible = set(self.windows)
         self.hidden: list[int] = []
 
@@ -135,7 +151,7 @@ class _FakeUser32:
         return 1
 
     def GetClassNameW(self, _handle, buffer, _size):
-        buffer.value = "Chrome_WidgetWin_1"
+        buffer.value = self.window_class
         return len(buffer.value)
 
     def IsWindowVisible(self, handle):
@@ -180,20 +196,134 @@ class TestBrowserstart:
     @pytest.mark.asyncio()
     async def test_belegtes_profil_faellt_auf_zweiten_ordner_zurueck(self):
         connector = _Connector(_Settings())
-        chromium = _FakeChromium(fail_times=2)  # Chrome + Chromium im ersten Ordner
-        context = await connector._launch(_FakePlaywright(chromium))
+        # Chrome (Ordner 1 und 2) und Chromium (Ordner 1) scheitern, Chromium
+        # im zweiten Ordner kommt durch - der Ausweichordner rettet den Start.
+        chromium = _FakeBrowser(fail_times=3)
+        context = await connector._launch(_FakePlaywright(chromium=chromium))
         assert isinstance(context, str) and context.endswith("-2")
-        assert len(chromium.calls) == 3
+        assert len(chromium.calls) == 4
 
     @pytest.mark.asyncio()
     async def test_alle_versuche_scheitern_mit_klarer_meldung(self):
         connector = _Connector(_Settings())
-        chromium = _FakeChromium(fail_times=99)
+        chromium = _FakeBrowser(fail_times=99)
         with pytest.raises(ConnectorUnavailableError) as excinfo:
-            await connector._launch(_FakePlaywright(chromium))
+            await connector._launch(_FakePlaywright(chromium=chromium))
         message = str(excinfo.value)
-        assert "Chrome" in message and "Chromium" in message
+        assert "Google Chrome" in message and "Chromium" in message
+        assert "Firefox" in message
         assert "PROFILE_DIR" in message
+
+
+class TestBrowserauswahl:
+    """<PRÄFIX>_BROWSER: welcher Browser die Website-Suche ausfuehrt."""
+
+    def test_standard_probiert_chrome_dann_chromium_dann_firefox(self):
+        engines = _Connector(_Settings())._engine_candidates()
+        assert [engine.key for engine in engines] == ["chrome", "chromium", "firefox"]
+
+    def test_firefox_laesst_sich_allein_waehlen(self):
+        class NurFirefox(_Settings):
+            demo_browser = "firefox"
+
+        connector = _Connector(NurFirefox())
+        engines = connector._engine_candidates()
+        assert [engine.key for engine in engines] == ["firefox"]
+        # Eigenes Profil: ein Chrome-Profil darf nicht als Firefox dienen.
+        assert connector._profile_candidates(engines[0])[0].endswith("-firefox")
+
+    def test_chromium_faellt_nicht_auf_chrome_zurueck(self):
+        class NurChromium(_Settings):
+            demo_browser = "chromium"
+
+        engines = _Connector(NurChromium())._engine_candidates()
+        assert [engine.key for engine in engines] == ["chromium"]
+
+    def test_grossschreibung_ist_egal(self):
+        class Gross(_Settings):
+            demo_browser = "Firefox"
+
+        assert [e.key for e in _Connector(Gross())._engine_candidates()] == ["firefox"]
+
+    def test_unbekannter_wert_wird_gemeldet_und_gilt_als_auto(self, caplog):
+        class Tippfehler(_Settings):
+            demo_browser = "foxfire"
+
+        with caplog.at_level("WARNING"):
+            engines = _Connector(Tippfehler())._engine_candidates()
+        assert [engine.key for engine in engines] == ["chrome", "chromium", "firefox"]
+        assert "foxfire" in caplog.text and "DEMO_BROWSER" in caplog.text
+
+    def test_hinweis_nennt_die_ausweichbrowser(self):
+        hint = _Connector(_Settings()).browser_setup_hint()
+        assert "Google Chrome" in hint
+        assert "playwright install firefox" in hint
+
+    def test_firefox_braucht_keine_chromium_schalter(self):
+        connector = _Connector(_Settings())
+        assert connector._launch_args(engine=FIREFOX, headless=False, hidden=True) == []
+        chrome_args = connector._launch_args(headless=False, hidden=True)
+        assert "--start-minimized" in chrome_args
+
+
+class TestFirefoxStart:
+    @pytest.mark.asyncio()
+    async def test_firefox_startet_ohne_chromium_schalter_und_mit_eigener_kennung(self):
+        class NurFirefox(_Settings):
+            demo_browser = "firefox"
+
+        connector = _Connector(NurFirefox())
+        firefox = _FakeBrowser()
+        await connector._launch(_FakePlaywright(firefox=firefox))
+        assert connector.engine is not None and connector.engine.key == "firefox"
+        call = firefox.calls[0]
+        assert call["user_data_dir"].endswith("-firefox")
+        assert call["args"] == []
+        assert "channel" not in call
+        # Firefox meldet sich selbst als Firefox - keine Chrome-Kennung.
+        assert "user_agent" not in call
+        assert call["firefox_user_prefs"]["dom.webdriver.enabled"] is False
+        assert call["headless"] is False
+
+    @pytest.mark.asyncio()
+    async def test_auto_faellt_auf_firefox_zurueck(self):
+        """Ohne Chrome und Chromium sucht die Anwendung mit Firefox."""
+        connector = _Connector(_Settings())
+        firefox = _FakeBrowser()
+        context = await connector._launch(
+            _FakePlaywright(chromium=_FakeBrowser(fail_times=99), firefox=firefox)
+        )
+        assert connector.engine is not None and connector.engine.key == "firefox"
+        assert str(context).endswith("-firefox")
+
+    @pytest.mark.asyncio()
+    async def test_fehlender_firefox_nennt_den_installationsbefehl(self):
+        class NurFirefox(_Settings):
+            demo_browser = "firefox"
+
+        connector = _Connector(NurFirefox())
+        firefox = _FakeBrowser(
+            fail_times=99,
+            error=RuntimeError(
+                "Executable doesn't exist at C:\\ms-playwright\\firefox-1543\\"
+                "firefox\\firefox.exe"
+            ),
+        )
+        with pytest.raises(ConnectorUnavailableError) as excinfo:
+            await connector._launch(_FakePlaywright(firefox=firefox))
+        message = str(excinfo.value)
+        assert "playwright install firefox" in message
+        # Fehlt der Browser selbst, hilft kein zweiter Profilordner.
+        assert len(firefox.calls) == 1
+
+    @pytest.mark.asyncio()
+    async def test_chrome_bekommt_weiterhin_die_chrome_kennung(self):
+        connector = _Connector(_Settings())
+        chromium = _FakeBrowser()
+        await connector._launch(_FakePlaywright(chromium=chromium))
+        assert chromium.calls[0]["channel"] == "chrome"
+        assert "Chrome" in chromium.calls[0]["user_agent"]
+        assert "firefox_user_prefs" not in chromium.calls[0]
 
 
 class TestUnsichtbaresFenster:
@@ -242,8 +372,8 @@ class TestUnsichtbaresFenster:
     @pytest.mark.asyncio()
     async def test_start_bleibt_headed_und_versteckt(self):
         connector = _Connector(_Settings())
-        chromium = _FakeChromium(fail_times=0)
-        await connector._launch(_FakePlaywright(chromium))
+        chromium = _FakeBrowser(fail_times=0)
+        await connector._launch(_FakePlaywright(chromium=chromium))
         assert chromium.calls[0]["headless"] is False
         assert "--start-minimized" in chromium.calls[0]["args"]
 
@@ -259,7 +389,9 @@ class TestUnsichtbaresFenster:
         from backend.connectors import browser_web
 
         connector = _Connector(_Settings())
-        monkeypatch.setattr(browser_web, "_hide_native_window", lambda known, owned=None: True)
+        monkeypatch.setattr(
+            browser_web, "_hide_native_window", lambda known, owned=None, *a, **k: True
+        )
         assert await connector._make_window_invisible(set()) == "hidden"
 
     @pytest.mark.asyncio()
@@ -267,7 +399,9 @@ class TestUnsichtbaresFenster:
         from backend.connectors import browser_web
 
         connector = _Connector(_Settings())
-        monkeypatch.setattr(browser_web, "_hide_native_window", lambda known, owned=None: False)
+        monkeypatch.setattr(
+            browser_web, "_hide_native_window", lambda known, owned=None, *a, **k: False
+        )
         minimized: list[bool] = []
 
         async def fake_minimize():
@@ -279,14 +413,16 @@ class TestUnsichtbaresFenster:
         assert minimized == [True]
 
     def test_fenstererkennung_liefert_eine_menge(self):
-        from backend.connectors.browser_web import _foreign_chrome_window_handles
+        from backend.connectors.browser_web import _window_handles
 
-        assert isinstance(_foreign_chrome_window_handles(), set)
+        assert isinstance(_window_handles(), set)
+        assert isinstance(_window_handles(FIREFOX.window_class_markers), set)
 
     def test_prozesserkennung_liefert_eine_menge(self):
-        from backend.connectors.browser_web import _chrome_process_ids
+        from backend.connectors.browser_web import _process_ids
 
-        assert isinstance(_chrome_process_ids(), set)
+        assert isinstance(_process_ids(), set)
+        assert isinstance(_process_ids(FIREFOX.process_names), set)
 
     @pytest.mark.asyncio()
     async def test_eigene_prozessliste_wird_weitergereicht(self, monkeypatch):
@@ -297,7 +433,7 @@ class TestUnsichtbaresFenster:
         connector._owned_pids = {12345}
         seen: dict = {}
 
-        def fake_hide(known, owned=None):
+        def fake_hide(known, owned=None, *_args, **_kwargs):
             seen["owned"] = owned
             return True
 
@@ -314,7 +450,7 @@ class TestUnsichtbaresFenster:
         connector._owned_pids = {7}
         seen: dict = {}
 
-        def fake_hide(known, owned=None):
+        def fake_hide(known, owned=None, *_args, **_kwargs):
             seen["known"] = known
             seen["owned"] = owned
             return True
@@ -343,6 +479,54 @@ class TestUnsichtbaresFenster:
         assert _hide_native_window(set(), {1111}) is True
         assert fake.hidden == [101]
         assert 202 in fake.visible
+
+    @pytest.mark.skipif(os.name != "nt", reason="nutzt die Windows-API")
+    def test_firefox_fenster_werden_erkannt(self, monkeypatch):
+        """Firefox-Fenster heißen anders ("Mozilla...") - die Erkennung auch."""
+        import ctypes
+
+        from backend.connectors.browser_web import _hide_native_window
+
+        fake = _FakeUser32(
+            windows={101: 1111}, window_class="MozillaWindowClass"
+        )
+        monkeypatch.setattr(ctypes.windll, "user32", fake)
+
+        assert _hide_native_window(set(), {1111}, FIREFOX.window_class_markers) is True
+        assert fake.hidden == [101]
+
+    @pytest.mark.skipif(os.name != "nt", reason="nutzt die Windows-API")
+    def test_chrome_marker_fassen_kein_firefox_fenster_an(self, monkeypatch):
+        import ctypes
+
+        from backend.connectors.browser_web import _hide_native_window
+
+        fake = _FakeUser32(windows={101: 1111}, window_class="MozillaWindowClass")
+        monkeypatch.setattr(ctypes.windll, "user32", fake)
+
+        assert _hide_native_window(set(), {1111}) is False
+        assert fake.hidden == []
+
+    @pytest.mark.skipif(os.name != "nt", reason="nutzt die Windows-API")
+    def test_firefox_fenster_werden_ohne_cdp_minimiert(self, monkeypatch):
+        import ctypes
+
+        from backend.connectors.browser_web import _minimize_native_window
+
+        fake = _FakeUser32(windows={101: 1111, 202: 2222}, window_class="MozillaWindowClass")
+        monkeypatch.setattr(ctypes.windll, "user32", fake)
+
+        assert _minimize_native_window({1111}, FIREFOX.window_class_markers) is True
+        # Nur das eigene Fenster wird angefasst.
+        assert fake.hidden == [101]
+        assert 202 in fake.visible
+
+    def test_minimieren_ohne_prozessliste_ist_harmlos(self):
+        """Ohne bekannte eigene Prozesse wird kein Fenster angefasst."""
+        from backend.connectors.browser_web import _minimize_native_window
+
+        assert _minimize_native_window(None, FIREFOX.window_class_markers) is False
+        assert _minimize_native_window(set(), FIREFOX.window_class_markers) is False
 
     @pytest.mark.skipif(os.name != "nt", reason="nutzt die Windows-API")
     def test_fenster_des_nutzers_bleiben_im_rueckfall_offen(self, monkeypatch):

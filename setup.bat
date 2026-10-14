@@ -1,12 +1,13 @@
 @echo off
 REM Ein-Klick-Einrichtung unter Windows (ruft setup.ps1 auf).
 REM
-REM Prueft und installiert bei Bedarf Python, Node.js und Google Chrome und
+REM Prueft und installiert bei Bedarf Python, Node.js und einen Browser
+REM (Google Chrome; ist schon Firefox da, wird kein Chrome installiert) und
 REM richtet danach die Anwendung ein. Mehrfach ausfuehrbar.
 REM
 REM Verwendung: setup.bat [-Check] [-NoChrome] [-NoStart] [-Rebuild]
 REM   -Check     nur pruefen und berichten, nichts aendern
-REM   -NoChrome  Chrome nicht installieren, nur melden
+REM   -NoChrome  keinen Browser installieren, nur melden
 REM   -NoStart   nicht starten, nur einrichten
 REM   -Rebuild   Oberflaeche auch dann neu bauen, wenn sie schon da ist
 

@@ -4,15 +4,17 @@
 
 .DESCRIPTION
     Prueft und installiert bei Bedarf Python (>= 3.11), Node.js (>= 20) und
-    Google Chrome, legt die virtuelle Umgebung an, installiert die
+    einen Browser (Google Chrome; ist schon Firefox da, reicht der auch),
+    legt die virtuelle Umgebung an, installiert die
     Abhaengigkeiten, erzeugt ".env" aus der Vorlage und baut die Oberflaeche.
     Am Ende wird die Anwendung gestartet.
 
     Das Skript ist mehrfach ausfuehrbar: Was schon da ist, wird nur gemeldet.
 
     Was es NICHT tut: Es aendert keine Systemeinstellungen dauerhaft und laedt
-    keine Playwright-Browser herunter - die Website-Suche steuert das
-    installierte Google Chrome.
+    keine Playwright-Browser herunter - die Website-Suche nutzt das installierte
+    Google Chrome (wahlweise Chromium oder Firefox von Playwright, siehe
+    EBAY_WEB_BROWSER).
 
     Hinweis zur Schreibweise: Diese Datei nutzt bewusst nur ASCII (ue/oe/ae/ss).
     PowerShell 5.1 liest Skripte ohne BOM als ANSI - Umlaute wuerden sonst im
@@ -22,7 +24,8 @@
     Nur pruefen und berichten. Es wird nichts installiert oder geaendert.
 
 .PARAMETER NoChrome
-    Chrome nicht installieren, auch wenn er fehlt (nur melden).
+    Keinen Browser installieren, auch wenn keiner da ist (nur melden). Ist
+    Firefox vorhanden, wird Chrome ohnehin nicht installiert.
 
 .PARAMETER NoStart
     Am Ende nicht starten, nur einrichten.
@@ -160,6 +163,17 @@ function Get-ChromeExe {
     return $null
 }
 
+function Get-FirefoxExe {
+    foreach ($path in @(
+            "$env:ProgramFiles\Mozilla Firefox\firefox.exe",
+            "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe",
+            "$env:LOCALAPPDATA\Mozilla Firefox\firefox.exe"
+        )) {
+        if ($path -and (Test-Path $path)) { return $path }
+    }
+    return $null
+}
+
 function Install-WingetPackage {
     <# Installiert ein Paket ueber winget. Ob es geklappt hat, entscheidet die erneute Pruefung. #>
     param([string[]]$Ids, [string]$Label, [switch]$UserScope)
@@ -193,7 +207,9 @@ function Show-ManualHints {
         }
         'chrome' {
             Write-Note 'Google Chrome von https://www.google.com/chrome/ installieren - oder: winget install Google.Chrome.'
-            Write-Note 'Ohne Chrome gibt es keine Suche ueber eBay- oder Kleinanzeigen-Website.'
+            Write-Note 'Ohne Browser gibt es keine Suche ueber eBay- oder Kleinanzeigen-Website.'
+            Write-Note 'Alternativ Firefox nehmen: .venv\Scripts\python -m playwright install firefox'
+            Write-Note 'und in .env EBAY_WEB_BROWSER=firefox setzen (siehe README, Abschnitt 5.0).'
         }
     }
 }
@@ -259,13 +275,20 @@ else {
 # ---------------------------------------------------------------------------
 # 3. Google Chrome (fuer die Website-Suche)
 # ---------------------------------------------------------------------------
-Write-Step 'Google Chrome pruefen (fuer die Suche ueber eBay- und Kleinanzeigen-Website)'
+Write-Step 'Browser pruefen (fuer die Suche ueber eBay- und Kleinanzeigen-Website)'
 $chrome = Get-ChromeExe
+$firefox = Get-FirefoxExe
 if ($chrome) {
     Write-Ok "Chrome gefunden ($chrome)"
 }
+elseif ($firefox) {
+    # Chrome wird dann nicht installiert: Die Website-Suche laeuft auch in
+    # Firefox (EBAY_WEB_BROWSER=firefox), er braucht nur seinen eigenen Build.
+    Write-Ok "Kein Chrome, aber Firefox gefunden ($firefox)"
+    Write-Note 'Fuer die Suche in Firefox nach der Einrichtung einmalig: .venv\Scripts\python -m playwright install firefox'
+}
 else {
-    Write-Missing 'Google Chrome'
+    Write-Missing 'Google Chrome (oder Firefox)'
     if ($Check -or $NoChrome) {
         Show-ManualHints 'chrome'
     }

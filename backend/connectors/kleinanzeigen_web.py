@@ -5,12 +5,14 @@ Warum es diesen Connector gibt
 Kleinanzeigen betreibt KEINE öffentliche API für Suche oder Angebotsdaten. Die
 öffentliche Website lässt sich dagegen ohne Konto durchsuchen - genau das macht
 ein Benutzer im Browser. Damit die App das ebenfalls kann, steuert dieser
-Connector den lokal installierten Google Chrome über Playwright, öffnet die
-normale Suchseite und liest die Ergebnisliste aus.
+Connector einen echten Browser über Playwright, öffnet die normale Suchseite
+und liest die Ergebnisliste aus. Standardmäßig ist das Google Chrome
+(``KLEINANZEIGEN_WEB_BROWSER=auto``); ohne Chrome läuft es mit Chromium oder
+Firefox von Playwright.
 
 Gleiches Vorgehen wie beim eBay-Website-Connector
 -------------------------------------------------
-* Ein realer Chrome mit persistentem Profil liest die Seite so, wie ein
+* Ein realer Browser mit persistentem Profil liest die Seite so, wie ein
   Benutzer sie liest. Die Trefferliste ist serverseitig gerendert, deshalb
   läuft der Browser hier standardmäßig headless - es entsteht gar kein Fenster.
   Wird Headless abgeschaltet (``KLEINANZEIGEN_WEB_HEADLESS=false``), bleibt das
@@ -426,7 +428,9 @@ class KleinanzeigenWebConnector(BrowserWebConnector):
             docs_url=None,
             requires_credentials=False,
             setup_hint=(
-                "Google Chrome installieren und 'pip install playwright' ausführen. "
+                self.browser_setup_hint()
+                + " Browser wählbar über KLEINANZEIGEN_WEB_BROWSER "
+                "(auto, chrome, chromium, firefox). "
                 "Abschalten mit KLEINANZEIGEN_WEB_ENABLED=false."
             ),
             limitations=[
@@ -623,7 +627,7 @@ class KleinanzeigenWebConnector(BrowserWebConnector):
         caps = self.capabilities
         if not caps.available:
             return False, caps.reason_unavailable
-        return True, "Google Chrome wird für die Kleinanzeigen-Suche gesteuert."
+        return True, f"{self.browser_hint()} wird für die Kleinanzeigen-Suche gesteuert."
 
     async def test_connection(self) -> tuple[bool, str | None, dict[str, Any]]:
         caps = self.capabilities

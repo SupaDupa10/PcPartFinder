@@ -10,7 +10,9 @@ cd /d "%~dp0"
 set "PY=.venv\Scripts\python.exe"
 if not exist "%PY%" (
   echo FEHLER: Keine virtuelle Umgebung gefunden.
-  echo Bitte zuerst anlegen und Abhaengigkeiten installieren:
+  echo Bitte zuerst die Einrichtung ausfuehren:
+  echo   setup.bat
+  echo Von Hand waere es:
   echo   python -m venv .venv
   echo   .venv\Scripts\python -m pip install -r requirements.txt
   echo.

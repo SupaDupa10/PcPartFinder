@@ -17,7 +17,8 @@ fi
 
 if [ ! -x "$PY" ]; then
   echo "FEHLER: Keine virtuelle Umgebung gefunden." >&2
-  echo "Bitte zuerst anlegen und Abhaengigkeiten installieren:" >&2
+  echo "Bitte zuerst die Einrichtung ausfuehren:  bash setup.sh" >&2
+  echo "Von Hand waere es:" >&2
   echo "  python -m venv .venv" >&2
   echo "  .venv/bin/python -m pip install -r requirements.txt" >&2
   exit 1

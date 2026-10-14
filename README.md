@@ -69,6 +69,32 @@ Bestand. Ohne eigene Zugangsdaten oder Importdatei starten `start.bat` bzw.
 `./start.sh` mit den Beispieldaten aus `samples/` (erfundene Demo-Angebote,
 keine Live-Suche).
 
+### Ein-Klick-Einrichtung (empfohlen)
+
+**Windows:** `setup.bat` doppelklicken.
+**Linux/macOS:** `bash setup.sh`.
+
+Beides prüft zuerst, was schon vorhanden ist, und installiert Fehlendes über
+`winget` (Windows) bzw. den Paketmanager (Linux/macOS):
+
+* Python 3.11 oder neuer,
+* Node.js 20 oder neuer (nur für die Oberfläche nötig),
+* Google Chrome, falls es fehlt — ohne Chrome gibt es keine Suche über
+die eBay- oder Kleinanzeigen-Website. Abschaltbar mit `setup.bat -NoChrome`.
+
+Danach werden `.venv`, die Abhängigkeiten, `.env` und `frontend/dist`
+hergestellt, und die Anwendung startet. Beide Skripte sind mehrfach
+ausführbar: Vorhandenes wird nur gemeldet, nichts überschrieben.
+
+Nur prüfen, nichts ändern:
+
+```bash
+setup.bat -Check          # Windows
+bash setup.sh --check     # Linux/macOS
+```
+
+### Von Hand
+
 Voraussetzungen:
 
 * Python 3.11 oder neuer
